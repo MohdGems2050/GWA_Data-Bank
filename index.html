@@ -7,6 +7,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&family=Montserrat:wght@400;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
+<script>if(typeof Chart!=='undefined'&&typeof ChartDataLabels!=='undefined'){Chart.register(ChartDataLabels);}</script>
 
 <!-- ===== FIREBASE ===== -->
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
@@ -62,7 +64,7 @@ hr{border:none;border-top:1px solid var(--border);margin:16px 0}
 /* PASS / ADMIN */
 .pcard{background:#fff;border-radius:16px;padding:28px;width:320px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,.3)}
 .acard{background:#fff;border-radius:20px;padding:32px;width:480px;max-width:95vw;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.3)}
-.agrid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:20px 0}
+.agrid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin:20px 0}
 .abtn{border:2px solid var(--border);background:var(--bg);border-radius:14px;padding:20px 10px;cursor:pointer;transition:all .2s;font-family:Montserrat,sans-serif}
 .abtn:hover{border-color:var(--navy);background:#eef2ff;transform:translateY(-2px)}
 .abtn .ai{font-size:36px;color:var(--navy);margin-bottom:8px}
@@ -123,10 +125,13 @@ hr{border:none;border-top:1px solid var(--border);margin:16px 0}
 .icard .ico{font-size:28px;margin-bottom:8px}
 .icard .att-card-ico{color:var(--att)}.icard .prog-card-ico{color:var(--prog)}
 .icard .ilbl-en{font-size:13px;font-weight:700;color:var(--text)}
-.icard .ilbl-ar{font-size:10px;margin-top:3px;font-family:Tajawal,sans-serif;font-weight:700;color:var(--text2)}
+.icard .ilbl-ar{font-size:10px;margin-top:3px;font-family:Tajawal,sans-serif;font-weight:700;color:#c62828}
 .icard .ibdg{position:absolute;top:6px;right:6px;background:var(--gold);color:var(--navy);font-size:9px;font-weight:700;padding:2px 5px;border-radius:8px;font-family:Montserrat,sans-serif}
 .icard.att-main{border-color:var(--att);background:linear-gradient(135deg,#eff6ff,#fff)}
 .icard.prog-main{border-color:var(--prog);background:linear-gradient(135deg,#f5f3ff,#fff)}
+.icard.external-card{background:linear-gradient(135deg,#fde6f0,#fff);border-color:#f3c6dd}
+.icard.external-card:hover{border-color:#d6336c;box-shadow:0 4px 16px rgba(214,51,108,.18)}
+.icard.external-card .ico i{color:#d6336c!important}
 
 /* TABLE */
 .tbl{width:100%;border-collapse:collapse;font-size:12px}
@@ -281,6 +286,11 @@ select{font-family:Montserrat,sans-serif;font-size:13px}
         <div class="al">Create Years</div>
         <div class="al2 ar">تخليق سنوات</div>
       </div>
+      <div class="abtn" onclick="openMod('activity')">
+        <div class="ai"><i class="ti ti-eye"></i></div>
+        <div class="al">Activity Log</div>
+        <div class="al2 ar">عين الصقر</div>
+      </div>
     </div>
     <button class="btn btn-o" onclick="closeAdmin()">
       <i class="ti ti-arrow-left"></i> Back
@@ -425,7 +435,7 @@ var DEFAULT_YEAR_IDS = ['20232024','20242025','20252026'];
 var ALL_POSSIBLE_YEARS = (function(){
   var yrs=[];
   for(var y=2021;y<=2198;y++){
-    yrs.push({id:String(y)+String(y+1),label:y+'-'+(y+1),code:'AY'+String(y+1).slice(2)+String(y+2).slice(2)});
+    yrs.push({id:String(y)+String(y+1),label:y+'-'+(y+1),code:'AY'+String(y).slice(2)+String(y+1).slice(2)});
   }
   return yrs;
 })();
@@ -446,6 +456,26 @@ var GRADES = [
   {id:'g11',en:'Grade 11',ar:'الحادي عشر', g:'DP'},
   {id:'g12',en:'Grade 12',ar:'الثاني عشر', g:'DP'}
 ];
+
+// تعريف المراحل KG/PYP/MYP/DP وأسماؤها — لتقرير المراحل
+var STAGES = {
+  KG: {en:'KG',ar:'الروضة',label:'KG (KG1-KG2)'},
+  PYP:{en:'PYP',ar:'PYP',label:'PYP (Grade1-5)'},
+  MYP:{en:'MYP',ar:'MYP',label:'MYP (Grade6-10)'},
+  DP: {en:'DP',ar:'DP',label:'DP (Grade11-12)'}
+};
+function stageGrades(stageKey){return GRADES.filter(function(g){return g.g===stageKey;});}
+// ترحيل صفوف مرحلة للخلف بعدد سنوات معيّن (لميزة Full Cohort) — يُرجع مصفوفة صفوف أو null لو تجاوز الحد (قبل KG1)
+function shiftStageGrades(stageKey,yearsBack){
+  var idxList=GRADES.map(function(g,i){return g.g===stageKey?i:-1;}).filter(function(i){return i>=0;});
+  var shifted=[];
+  for(var k=0;k<idxList.length;k++){
+    var newIdx=idxList[k]-yearsBack;
+    if(newIdx<0)return null; // تجاوز أقدم مرحلة (KG1)
+    shifted.push(GRADES[newIdx]);
+  }
+  return shifted;
+}
 
 // Load all data from Firebase
 async function initApp() {
@@ -543,6 +573,15 @@ var unsaved={}, charts={}, unsavedCb=null, shareGid=null;
 var activeFilt='all';
 
 function el(id){return document.getElementById(id);}
+// تحقق من صلاحية المستخدم الحالي بالتحرير في مادة/مرحلة معينة
+function canEdit(subjectId,gradeGroup){
+  if(!cu)return false;
+  if(cu.role!=='editor')return cu.role==='viewer'?false:true; // viewer لا يحرر أبداً؛ أي دور آخر مستقبلي يحرر بحرية
+  var subs=cu.allowedSubjects,grades=cu.allowedGrades;
+  var subOk=(!subs||!subs.length)||subs.indexOf(subjectId)>=0;
+  var grOk=(!grades||!grades.length)||grades.indexOf(gradeGroup)>=0;
+  return subOk&&grOk;
+}
 function notify(msg,type){
   var n=el('notify');n.textContent=msg;n.style.display='block';
   n.style.background=type==='ok'?'#2d7d46':type==='err'?'#c62828':'#1565b0';
@@ -570,33 +609,89 @@ function openMod(type){
   if(type==='users'){
     t.innerHTML='<i class="ti ti-user-plus"></i> <strong>Create Users</strong> <span style="color:#c62828;font-family:Tajawal,sans-serif;font-weight:800;font-size:13px">تخليق مستخدمين</span>';
     b.innerHTML=buildUsers();
+    toggleNewUserPerms();
   } else if(type==='subjects'){
     t.innerHTML='<i class="ti ti-books"></i> <strong>Manage Subjects</strong> <span style="color:#c62828;font-family:Tajawal,sans-serif;font-weight:800;font-size:13px">إدارة المواد</span>';
     b.innerHTML=buildSubjects();
   } else if(type==='years'){
     t.innerHTML='<i class="ti ti-calendar-plus"></i> <strong>Manage Academic Years</strong> <span style="color:#c62828;font-family:Tajawal,sans-serif;font-weight:800;font-size:13px">إدارة السنوات</span>';
     b.innerHTML=buildYears();
+  } else if(type==='activity'){
+    t.innerHTML='<i class="ti ti-eye"></i> <strong>Activity Log</strong> <span style="color:#c62828;font-family:Tajawal,sans-serif;font-weight:800;font-size:13px">عين الصقر</span>';
+    b.innerHTML='<div style="text-align:center;padding:20px"><div class="spinner" style="border-top-color:var(--navy);margin:0 auto 10px"></div><div style="font-size:12px;color:var(--text2)">Loading activity log...</div></div>';
+    show('modalScreen');
+    loadActivityLog();
+    return;
   }
   show('modalScreen');
 }
 function closeMod(){hide('modalScreen');}
+
+// دليل مستويات التحصيل / التقدم — Attainment / Progress Levels Guide
+function showLevelsGuide(){
+  var isAtt=section==='att';
+  var t=el('modTitle'),b=el('modBody');
+  var titleEn=isAtt?'KHDA ATTAINMENT LEVELS':'KHDA PROGRESS LEVELS';
+  var titleAr=isAtt?'مستويات التحصيل':'مستويات التقدم';
+  t.innerHTML='<i class="ti ti-list-details"></i> <strong>'+titleEn+'</strong> <span style="color:#c62828;font-family:Tajawal,sans-serif;font-weight:800;font-size:13px">'+titleAr+'</span>';
+  var rows=isAtt?[
+    {key:'ab',color:'#2d7d46',bg:'#e8f9ef',label:'Above',labelAr:'أعلى من معايير المنهاج',
+      en:'Students Attaining Above Curriculum Standards',ar:'الطلاب الذين يحققون مستوى أعلى من معايير المنهاج'},
+    {key:'il',color:'#a8821f',bg:'#fbf3da',label:'In line with',labelAr:'متوافق مع معايير المنهاج',
+      en:'Students Attaining In Line with Curriculum Standards',ar:'الطلاب الذين يحققون مستوى متوافقاً مع معايير المنهاج'},
+    {key:'bl',color:'#c62828',bg:'#fdeaea',label:'Below',labelAr:'أقل من معايير المنهاج',
+      en:'Students Attaining Below Curriculum Standards',ar:'الطلاب الذين يحققون مستوى أقل من معايير المنهاج'}
+  ]:[
+    {key:'ab',color:'#2d7d46',bg:'#e8f9ef',label:'Above',labelAr:'أعلى من المتوقع',
+      en:'Students Making Progress Above Expectations',ar:'الطلاب الذين يُحققون تقدماً أعلى من المتوقع'},
+    {key:'il',color:'#a8821f',bg:'#fbf3da',label:'Expected',labelAr:'ضمن المتوقع',
+      en:'Students Making Expected Progress',ar:'الطلاب الذين يُحققون التقدم المتوقع'},
+    {key:'bl',color:'#c62828',bg:'#fdeaea',label:'Below',labelAr:'أقل من المتوقع',
+      en:'Students Making Progress Below Expectations',ar:'الطلاب الذين يُحققون تقدماً أقل من المتوقع'}
+  ];
+  var html='<div style="display:flex;justify-content:space-between;font-size:11px;font-weight:700;color:var(--text2);padding:0 4px 8px;border-bottom:2px solid var(--navy);margin-bottom:12px">'
+    +'<span>LEVEL <span class="ar">/ المستوى</span></span>'
+    +'<span style="flex:1;text-align:center">ENGLISH STATEMENT</span>'
+    +'<span class="ar">العبارة بالعربي</span></div>';
+  rows.forEach(function(r){
+    html+='<div style="border:2px solid '+r.color+';background:'+r.bg+';border-radius:12px;padding:14px 16px;margin-bottom:12px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">'
+      +'<div style="min-width:140px">'
+      +'<div style="display:inline-flex;align-items:center;gap:6px;font-weight:800;color:'+r.color+';font-size:14px"><span style="width:8px;height:8px;border-radius:50%;background:'+r.color+';display:inline-block"></span>'+r.label+'</div>'
+      +'<div class="ar" style="font-size:11px;color:var(--text2);margin-top:2px">'+r.labelAr+'</div></div>'
+      +'<div style="flex:1;min-width:160px;font-weight:700;font-size:13px;color:var(--text)">'+r.en+'</div>'
+      +'<div class="ar" style="flex:1;min-width:160px;font-size:14px;font-weight:700;text-align:right">'+r.ar+'</div>'
+      +'</div>';
+  });
+  html+='<div style="font-size:11px;color:var(--text2);margin-top:10px;display:flex;align-items:center;gap:6px"><i class="ti ti-file-text"></i> KHDA / DSIB Inspection Framework — '+(isAtt?'Curriculum Standards Terminology':'Progress Terminology')+'</div>';
+  b.innerHTML=html;
+  show('modalScreen');
+}
 
 // ═══════════════════════════════════════════════
 // USERS — Firebase
 // ═══════════════════════════════════════════════
 function buildUsers(){
   var rows='';
-  USERS.forEach(function(u){
+  USERS.forEach(function(u,idx){
     var ini=u.name.split(' ').map(function(n){return n[0];}).join('').slice(0,2).toUpperCase();
-    rows+='<div class="adrow">'
-      +'<div style="width:36px;height:36px;border-radius:50%;background:#eef2ff;display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--navy);font-size:13px">'+ini+'</div>'
-      +'<div style="flex:1"><div style="font-weight:700">'+u.name+'</div>'
-      +'<div style="font-size:11px;color:var(--text2)">'+u.u+'</div></div>'
+    var permLine='';
+    if(u.role==='editor'){
+      var subL=(u.allowedSubjects&&u.allowedSubjects.length)?u.allowedSubjects.map(function(sid){var s=ALL_SUBJECTS_40.find(function(x){return x.id===sid;});return s?s.en:sid;}).join(', '):'All Subjects';
+      var grL=(u.allowedGrades&&u.allowedGrades.length)?u.allowedGrades.join(', '):'All Stages';
+      permLine='<div style="font-size:10px;color:var(--att);margin-top:2px"><i class="ti ti-key" style="font-size:11px"></i> '+subL+' — '+grL+'</div>';
+    }
+    rows+='<div class="adrow" style="align-items:flex-start">'
+      +'<div style="width:36px;height:36px;border-radius:50%;background:#eef2ff;display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--navy);font-size:13px;flex-shrink:0">'+ini+'</div>'
+      +'<div style="flex:1;min-width:0"><div style="font-weight:700">'+u.name+'</div>'
+      +'<div style="font-size:11px;color:var(--text2)">'+u.u+'</div>'+permLine+'</div>'
       +'<span class="rbadge r-'+u.role+'">'+u.role+'</span>'
+      +'<button class="btn btn-o btn-sm" data-idx="'+idx+'" onclick="toggleRole(this)" title="Switch role"><i class="ti ti-replace"></i></button>'
+      +(u.role==='editor'?'<button class="btn btn-att btn-sm" data-idx="'+idx+'" onclick="editPerms(this)" title="Edit permissions"><i class="ti ti-key"></i></button>':'')
       +'<button class="btn btn-d btn-sm" data-uid="'+u.u+'" onclick="delUser(this)"><i class="ti ti-trash"></i></button>'
       +'</div>';
   });
-  return '<div style="max-height:180px;overflow-y:auto;margin-bottom:14px">'+rows+'</div>'
+  return '<div style="max-height:220px;overflow-y:auto;margin-bottom:14px">'+rows+'</div>'
+    +'<div id="permEditBox"></div>'
     +'<div style="border-top:1px solid var(--border);padding-top:12px">'
     +'<div style="font-weight:800;margin-bottom:10px">Add New User <span style="color:#c62828;font-family:Tajawal,sans-serif;font-weight:800;font-size:12px">إضافة مستخدم</span></div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
@@ -604,11 +699,136 @@ function buildUsers(){
     +'<div class="field" style="margin:0"><label>Username</label><input type="text" id="nu-user" placeholder="ahmed@gwa"></div>'
     +'<div class="field" style="margin:0"><label>Password</label><input type="password" id="nu-pass" placeholder="Pass@123"></div>'
     +'<div class="field" style="margin:0"><label>Role</label>'
-    +'<select id="nu-role" style="width:100%;padding:9px;border:1.5px solid var(--border);border-radius:8px">'
+    +'<select id="nu-role" style="width:100%;padding:9px;border:1.5px solid var(--border);border-radius:8px" onchange="toggleNewUserPerms()">'
     +'<option value="editor">Editor</option><option value="viewer">Viewer</option></select></div>'
     +'</div>'
+    +'<div id="nuPermsBox" style="margin-top:10px"></div>'
     +'<button class="btn btn-p" style="width:100%;margin-top:10px" onclick="saveUser()">'
     +'<i class="ti ti-user-check"></i> Create User</button></div>';
+}
+
+function permPickerHtml(prefix,selSubs,selGrades){
+  selSubs=selSubs||[];selGrades=selGrades||[];
+  var subCb='';
+  ALL_SUBJECTS_40.filter(function(s){return s.active;}).forEach(function(s){
+    var on=selSubs.indexOf(s.id)>=0;
+    subCb+='<label class="gcblbl'+(on?' on':'')+'" style="display:inline-flex"><input type="checkbox" value="'+s.id+'" '+(on?'checked':'')+' style="margin:0" data-pfx="'+prefix+'-subj">'+s.en+'</label>';
+  });
+  var grCb='';
+  ['KG','PYP','MYP','DP'].forEach(function(g){
+    var on=selGrades.indexOf(g)>=0;
+    grCb+='<label class="gcblbl'+(on?' on':'')+'" style="display:inline-flex"><input type="checkbox" value="'+g+'" '+(on?'checked':'')+' style="margin:0" data-pfx="'+prefix+'-grade">'+g+'</label>';
+  });
+  return '<div style="background:var(--bg);border-radius:10px;padding:10px;margin-top:6px">'
+    +'<div style="font-size:11px;font-weight:800;margin-bottom:6px;color:var(--text2);text-transform:uppercase">Allowed Subjects <span class="ar" style="text-transform:none">المواد المسموح بها</span></div>'
+    +'<div>'+subCb+'</div>'
+    +'<div style="font-size:11px;font-weight:800;margin:10px 0 6px;color:var(--text2);text-transform:uppercase">Allowed Stages <span class="ar" style="text-transform:none">المراحل المسموح بها</span></div>'
+    +'<div>'+grCb+'</div>'
+    +'<div style="font-size:10px;color:var(--text2);margin-top:8px"><i class="ti ti-info-circle"></i> Leave empty = access to all (default) <span class="ar" style="font-size:9px">إذا تُرك فارغًا = صلاحية كاملة</span></div>'
+    +'</div>';
+}
+
+function toggleNewUserPerms(){
+  var role=el('nu-role')?el('nu-role').value:'editor';
+  var box=el('nuPermsBox');if(!box)return;
+  box.innerHTML=role==='editor'?permPickerHtml('nu',[],[]):'';
+  if(role==='editor')bindPermClicks('nu');
+}
+
+function bindPermClicks(prefix){
+  document.querySelectorAll('[data-pfx="'+prefix+'-subj"],[data-pfx="'+prefix+'-grade"]').forEach(function(cb){
+    cb.addEventListener('change',function(){cb.closest('label').classList.toggle('on',cb.checked);});
+  });
+}
+
+function readPerms(prefix){
+  var subs=[],grades=[];
+  document.querySelectorAll('[data-pfx="'+prefix+'-subj"]:checked').forEach(function(cb){subs.push(cb.value);});
+  document.querySelectorAll('[data-pfx="'+prefix+'-grade"]:checked').forEach(function(cb){grades.push(cb.value);});
+  return{allowedSubjects:subs,allowedGrades:grades};
+}
+
+async function toggleRole(btn){
+  var idx=+btn.getAttribute('data-idx');
+  var u=USERS[idx];if(!u)return;
+  var newRole=u.role==='editor'?'viewer':'editor';
+  u.role=newRole;
+  if(newRole==='editor'&&!u.allowedSubjects){u.allowedSubjects=[];u.allowedGrades=[];}
+  try{
+    await fsSet('users', u.u.replace('@','_'), u);
+    notify('Role changed to '+newRole+' for '+u.name,'ok');
+    openMod('users');
+  }catch(e){ notify('Error updating role: '+(e&&e.message?e.message:e),'err'); }
+}
+
+function editPerms(btn){
+  var idx=+btn.getAttribute('data-idx');
+  var u=USERS[idx];if(!u)return;
+  var box=el('permEditBox');
+  box.innerHTML='<div class="card" style="border:2px solid var(--att);margin-bottom:14px">'
+    +'<div class="ctitle" style="color:var(--att)"><i class="ti ti-key"></i> Edit Permissions — '+u.name+'</div>'
+    +permPickerHtml('ep',u.allowedSubjects||[],u.allowedGrades||[])
+    +'<div style="display:flex;gap:8px;margin-top:10px">'
+    +'<button class="btn btn-o btn-sm" onclick="el(\'permEditBox\').innerHTML=\'\'">Cancel</button>'
+    +'<button class="btn btn-att btn-sm" data-idx="'+idx+'" onclick="savePerms(this)"><i class="ti ti-check"></i> Save Permissions</button>'
+    +'</div></div>';
+  bindPermClicks('ep');
+}
+
+async function savePerms(btn){
+  var idx=+btn.getAttribute('data-idx');
+  var u=USERS[idx];if(!u)return;
+  var perms=readPerms('ep');
+  u.allowedSubjects=perms.allowedSubjects;
+  u.allowedGrades=perms.allowedGrades;
+  try{
+    await fsSet('users', u.u.replace('@','_'), u);
+    notify('Permissions updated for '+u.name,'ok');
+    openMod('users');
+  }catch(e){ notify('Error saving permissions: '+(e&&e.message?e.message:e),'err'); }
+}
+
+// ═══════════════════════════════════════════════
+// ACTIVITY LOG — عين الصقر
+// ═══════════════════════════════════════════════
+async function loadActivityLog(){
+  var b=el('modBody');
+  try{
+    var snap=await fsGetAll('activity_log');
+    var entries=[];
+    snap.forEach(function(doc){entries.push(doc.data());});
+    entries.sort(function(a,b2){return (b2.ts||0)-(a.ts||0);});
+    if(!entries.length){
+      b.innerHTML='<div style="text-align:center;padding:30px;color:var(--text2)"><i class="ti ti-eye-off" style="font-size:36px"></i><p style="margin-top:8px;font-weight:600">No activity recorded yet <span class="ar" style="display:block;font-size:12px;margin-top:3px">لا يوجد نشاط مسجل بعد</span></p></div>';
+      return;
+    }
+    // تجميع حسب اليوم
+    var groups={};
+    var order=[];
+    entries.forEach(function(e){
+      var day=e.dateStr||'Unknown';
+      if(!groups[day]){groups[day]=[];order.push(day);}
+      groups[day].push(e);
+    });
+    var html='<div style="max-height:480px;overflow-y:auto">';
+    order.forEach(function(day){
+      html+='<div style="font-size:12px;font-weight:800;color:var(--navy);background:var(--bg);padding:6px 10px;border-radius:8px;margin:10px 0 6px"><i class="ti ti-calendar-event"></i> '+day+'</div>';
+      groups[day].forEach(function(e){
+        html+='<div class="adrow" style="align-items:flex-start;padding:9px 4px">'
+          +'<i class="ti ti-edit" style="font-size:16px;color:var(--att);margin-top:2px;flex-shrink:0"></i>'
+          +'<div style="flex:1;font-size:12px;line-height:1.6">'
+          +'<strong style="color:var(--navy)">'+(e.userName||'Unknown')+'</strong> updated and saved '
+          +'<strong>'+(e.subjectEn||'')+'</strong>, <strong>'+(e.yearLabel||'')+'</strong> — <strong>'+(e.term||'')+'</strong> — <strong>'+(e.gradeEn||'')+'</strong> '
+          +'<span style="background:var(--bg);padding:1px 6px;border-radius:6px;font-size:10px;color:var(--text2)">'+(e.section||'')+'</span>'
+          +'<div style="font-size:10px;color:var(--text2);margin-top:2px"><i class="ti ti-clock"></i> '+(e.timeStr||'')+'</div>'
+          +'</div></div>';
+      });
+    });
+    html+='</div>';
+    b.innerHTML=html;
+  }catch(e){
+    b.innerHTML='<div style="text-align:center;padding:20px;color:#c62828">Error loading activity log: '+(e&&e.message?e.message:e)+'</div>';
+  }
 }
 
 async function delUser(btn){
@@ -628,12 +848,17 @@ async function saveUser(){
   if(!name||!u||!p){notify('Fill all fields','err');return;}
   if(USERS.find(function(x){return x.u===u;})){notify('Username exists','err');return;}
   var newUser={u:u,p:p,role:role,name:name,email:u+'@Gwadatabank'};
+  if(role==='editor'){
+    var perms=readPerms('nu');
+    newUser.allowedSubjects=perms.allowedSubjects;
+    newUser.allowedGrades=perms.allowedGrades;
+  }
   try {
     await fsSet('users', u.replace('@','_'), newUser);
     USERS.push(newUser);
     notify('Created: '+name,'ok');
     openMod('users');
-  } catch(e){ notify('Error saving user','err'); }
+  } catch(e){ console.error('saveUser error:', e); notify('Error saving user: '+(e&&e.message?e.message:e),'err'); }
 }
 
 // ═══════════════════════════════════════════════
@@ -804,6 +1029,8 @@ function render(){
   else if(cp==='data')   c.innerHTML=pgData();
   else if(cp==='compare')c.innerHTML=pgCompare();
   else if(cp==='dashboard')c.innerHTML=pgDashboard();
+  else if(cp==='stagereport')c.innerHTML=pgStageReport();
+  else if(cp==='fullcohort')c.innerHTML=pgFullCohort();
   setTimeout(attachCharts,150);
 }
 
@@ -832,10 +1059,23 @@ function pgHome(){
     +'<span class="en" style="color:'+col+'">'+secEn+'</span>'
     +'<span class="ar" style="color:'+col+'">'+secAr+'</span>'
     +'</div></div>';
+  // الجزء الأول: أيقونة المرجع (Levels Guide)
+  h+='<div class="card" style="margin-bottom:16px;padding:14px">'
+    +'<div class="ctitle" style="color:'+col+';margin-bottom:10px"><i class="ti ti-info-circle"></i> Reference <span class="ar" style="font-size:12px">المرجع</span></div>'
+    +'<div class="pgrid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr))">'
+    +'<div class="icard '+(isAtt?'att-card':'prog-card')+' '+(isAtt?'att-main':'prog-main')+'" onclick="showLevelsGuide()" style="display:flex;align-items:center;gap:12px;text-align:left;padding:14px 16px">'
+    +'<i class="ti ti-list-details" style="font-size:28px;color:'+col+';flex-shrink:0"></i>'
+    +'<div><div class="ilbl-en" style="font-size:14px">'+(isAtt?'Attainment Levels':'Progress Levels')+'</div>'
+    +'<div class="ilbl-ar" style="font-size:11px;margin-top:3px">'+(isAtt?'مستويات التحصيل':'مستويات التقدم')+'</div></div>'
+    +'</div>'
+    +'</div></div>';
+  // الجزء الثاني: المواد الدراسية النشطة
+  h+='<div class="ctitle" style="color:'+col+';margin-bottom:10px"><i class="ti ti-books"></i> Subjects <span class="ar" style="font-size:12px">المواد الدراسية</span></div>';
   h+='<div class="pgrid">';
   SUBJECTS.forEach(function(s){
-    h+='<div class="icard '+(isAtt?'att-card':'prog-card')+'" data-sid="'+s.id+'" onclick="pickSub(this)">'
-      +'<div class="ico"><i class="ti '+s.icon+'" style="color:'+col+'"></i></div>'
+    var isExt=/^external/i.test(s.en.trim());
+    h+='<div class="icard '+(isAtt?'att-card':'prog-card')+(isExt?' external-card':'')+'" data-sid="'+s.id+'" onclick="pickSub(this)">'
+      +'<div class="ico"><i class="ti '+s.icon+'" style="color:'+(isExt?'#d6336c':col)+'"></i></div>'
       +'<div class="ilbl-en">'+s.en+'</div>'
       +'<div style="font-size:11px;margin-top:3px;font-family:Tajawal,sans-serif;font-weight:800;color:#c62828">'+s.ar+'</div>'
       +'</div>';
@@ -864,10 +1104,16 @@ function pgYears(){
   h+='<div class="pgrid">'
     +'<div class="icard '+(isAtt?'att-card':'prog-card')+'" data-rp="compare" onclick="goReportBtn(this)">'
     +'<div class="ico"><i class="ti ti-arrows-diff" style="color:'+col+'"></i></div>'
-    +'<div class="ilbl-en">'+(isAtt?'Achievement Over Time':'Progress Trends')+'</div></div>'
-    +'<div class="icard '+(isAtt?'att-card':'prog-card')+'" data-rp="dashboard" onclick="goReportBtn(this)">'
-    +'<div class="ico"><i class="ti ti-chart-bar" style="color:'+col+'"></i></div>'
-    +'<div class="ilbl-en">Dashboard</div></div>'
+    +'<div class="ilbl-en">'+(isAtt?'Attainment Over Time':'Progress Trends')+'</div>'
+    +'<div class="ilbl-ar">'+(isAtt?'التحصيل بمرور الوقت':'متابعة التقدم الدراسي بمرور الوقت')+'</div></div>'
+    +'<div class="icard '+(isAtt?'att-card':'prog-card')+'" onclick="if(!sel.t)sel.t=\'t1\';cp=\'stagereport\';render()">'
+    +'<div class="ico"><i class="ti ti-stack-2" style="color:'+col+'"></i></div>'
+    +'<div class="ilbl-en">Stage Report</div>'
+    +'<div class="ilbl-ar">تقرير المراحل</div></div>'
+    +'<div class="icard '+(isAtt?'att-card':'prog-card')+'" onclick="cp=\'fullcohort\';render()">'
+    +'<div class="ico"><i class="ti ti-users-group" style="color:'+col+'"></i></div>'
+    +'<div class="ilbl-en">Full Cohort</div>'
+    +'<div class="ilbl-ar">تقرير نفس المجموعة</div></div>'
     +'</div></div>';
   return h;
 }
@@ -892,10 +1138,16 @@ function pgTerms(){
     +'<div class="pgrid">'
     +'<div class="icard '+(isAtt?'att-card':'prog-card')+'" onclick="cp=\'compare\';render()">'
     +'<div class="ico"><i class="ti ti-arrows-diff" style="color:'+col+'"></i></div>'
-    +'<div class="ilbl-en">'+(isAtt?'Achievement Over Time':'Progress Trends')+'</div></div>'
-    +'<div class="icard '+(isAtt?'att-card':'prog-card')+'" onclick="cp=\'dashboard\';render()">'
-    +'<div class="ico"><i class="ti ti-chart-bar" style="color:'+col+'"></i></div>'
-    +'<div class="ilbl-en">Dashboard</div></div>'
+    +'<div class="ilbl-en">'+(isAtt?'Attainment Over Time':'Progress Trends')+'</div>'
+    +'<div class="ilbl-ar">'+(isAtt?'التحصيل بمرور الوقت':'متابعة التقدم الدراسي بمرور الوقت')+'</div></div>'
+    +'<div class="icard '+(isAtt?'att-card':'prog-card')+'" onclick="cp=\'stagereport\';render()">'
+    +'<div class="ico"><i class="ti ti-stack-2" style="color:'+col+'"></i></div>'
+    +'<div class="ilbl-en">Stage Report</div>'
+    +'<div class="ilbl-ar">تقرير المراحل</div></div>'
+    +'<div class="icard '+(isAtt?'att-card':'prog-card')+'" onclick="cp=\'fullcohort\';render()">'
+    +'<div class="ico"><i class="ti ti-users-group" style="color:'+col+'"></i></div>'
+    +'<div class="ilbl-en">Full Cohort</div>'
+    +'<div class="ilbl-ar">تقرير نفس المجموعة</div></div>'
     +'</div></div>';
   return h;
 }
@@ -909,12 +1161,30 @@ function termAr(){return{t1:'الفصل الأول',t2:'الفصل الثاني'
 // JUDGMENT
 // ═══════════════════════════════════════════════
 function getJ(a,il,b){
-  if(b>=26)return'weak';if(il>=75&&a<50)return'acceptable';
-  if(il>=75&&a>=50&&a<=59)return'good';if(il>=75&&a>=60&&a<=74)return'verygood';
-  if(il>=75&&a>=75)return'outstanding';return'na';
+  if(b>=26&&b<=100)return'weak';
+  if(a>=0&&a<=49&&il>=75&&il<=100)return'acceptable';
+  if(a>=50&&a<=60&&il>=75&&il<=100)return'good';
+  if(a>=61&&a<=74&&il>=75&&il<=100)return'verygood';
+  if(a>=75&&a<=100&&il>=75&&il<=100)return'outstanding';
+  return'na';
 }
 function jCls(j){return'j-'+j;}
 function jLbl(j){return{weak:'Weak ضعيف',acceptable:'Acceptable مقبول',good:'Good جيد',verygood:'Very Good جيد جداً',outstanding:'Outstanding ممتاز',na:'—'}[j]||'—';}
+// تسميات الفئات الثلاث (Above/In Line/Below) حسب القسم — Attainment أو Progress
+function levelLbl(key){
+  if(section==='prog'){
+    return{
+      ab:{en:'Above expectations',ar:'أعلى من المتوقع'},
+      il:{en:'Expected progress',ar:'التقدم المتوقع'},
+      bl:{en:'Below expectations',ar:'أقل من المتوقع'}
+    }[key];
+  }
+  return{
+    ab:{en:'Above',ar:'أعلى من معايير المنهاج'},
+    il:{en:'In Line',ar:'متوافق مع معايير المنهاج'},
+    bl:{en:'Below',ar:'أقل من معايير المنهاج'}
+  }[key];
+}
 
 // ═══════════════════════════════════════════════
 // DATA PAGE
@@ -945,26 +1215,47 @@ function pgData(){
 function gradeCard(g,isAtt,col){
   var db=DB();
   var D=db[sel.s]&&db[sel.s][sel.y]&&db[sel.s][sel.y][sel.t]&&db[sel.s][sel.y][sel.t][g.id];
-  var d=D||{st:{tot:0,m:0,f:0,gt:0,sod:0,em:0},j:{ab:0,il:0,bl:0,abm:0,abf:0,abgt:0,absod:0,abem:0,ilm:0,ilf:0,ilgt:0,ilsod:0,ilem:0,blm:0,blf:0,blgt:0,blsod:0,blem:0},saved:false};
+  var d=D||{st:{tot:0,m:0,f:0,gt:0,sod:0,em:0},j:{ab:0,il:0,bl:0,abm:0,abf:0,abgt:0,absod:0,abem:0,ilm:0,ilf:0,ilgt:0,ilsod:0,ilem:0,blm:0,blf:0,blgt:0,blsod:0,blem:0},saved:false,na:false};
   var savedCls=d.saved?' ch':'';
+  var canE=canEdit(sel.s,g.g);
+  var isNA=!!d.na;
+  var dis=(canE&&!isNA)?'':' disabled style="opacity:.55;cursor:not-allowed"';
   var j=getJ(d.j.ab,d.j.il,d.j.bl);
-  var sb=d.saved
-    ?'<span style="font-size:11px;color:#2d7d46;font-weight:700"><i class="ti ti-check"></i> Saved</span>'
-    :'<span style="font-size:11px;color:#e65100;font-weight:600"><i class="ti ti-clock"></i> Unsaved</span>';
+  var sb=isNA
+    ?'<span style="font-size:11px;color:#6b7280;font-weight:700"><i class="ti ti-ban"></i> N/A</span>'
+    :(d.saved
+      ?'<span style="font-size:11px;color:#2d7d46;font-weight:700"><i class="ti ti-check"></i> Saved</span>'
+      :'<span style="font-size:11px;color:#e65100;font-weight:600"><i class="ti ti-clock"></i> Unsaved</span>');
+  if(!canE)sb+='<span style="font-size:10px;color:#b71c1c;font-weight:700;margin-left:6px"><i class="ti ti-lock"></i> View Only</span>';
   var sth=[['Total','الإجمالي'],['Male','بنين'],['Female','بنات'],['G&T','موهوبون'],['SoD','ذوو الهمم'],['Emirati','إماراتيون']];
   var skeys=['tot','m','f','gt','sod','em'];
+  var sub=SUBJECTS.find(function(x){return x.id===sel.s;})||ALL_SUBJECTS_40.find(function(x){return x.id===sel.s;});
+  var yr=YEARS.find(function(x){return x.id===sel.y;});
+  var secEn=isAtt?'Attainment':'Progress';
   var h='<div class="card" id="gc-'+g.id+'">';
-  h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
-    +'<div><span style="font-size:15px;font-weight:800;color:'+col+'">'+g.en+'</span>'
-    +' <span class="ar" style="font-size:12px;color:var(--text2)">'+g.ar+'</span>'
-    +' <span style="font-size:10px;background:var(--bg);color:'+col+';padding:2px 7px;border-radius:8px;font-weight:700">'+g.g+'</span></div>'
-    +'<div id="sb-g-'+g.id+'">'+sb+'</div></div>';
+  // رأس البطاقة: العنوان الكامل في المنتصف + اسم الصف بالعربي أكبر وأعرض
+  h+='<div style="text-align:center;margin-bottom:12px;padding-bottom:10px;border-bottom:2px solid '+col+'">'
+    +'<div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:.3px">'
+    +secEn+' | '+(sub?sub.en:'')+' | '+(yr?yr.code:'')+' | '+termEn()+'</div>'
+    +'<div style="margin-top:4px"><span style="font-size:19px;font-weight:800;color:'+col+'">'+g.en+'</span>'
+    +' <span class="ar" style="font-size:17px;font-weight:800">'+g.ar+'</span></div>'
+    +'<div style="margin-top:6px;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap">'
+    +'<span style="font-size:10px;background:var(--bg);color:'+col+';padding:2px 8px;border-radius:8px;font-weight:700">'+g.g+'</span>'
+    +'<span id="sb-g-'+g.id+'">'+sb+'</span>'
+    +'</div></div>';
+  h+='<div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-bottom:10px;flex-wrap:wrap">'
+    +'<label style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;cursor:pointer;background:var(--bg);padding:5px 10px;border-radius:8px">'
+    +'<input type="checkbox" id="na-'+g.id+'" '+(isNA?'checked':'')+(canE?'':' disabled')+' onchange="toggleNA(this,\''+g.id+'\',\''+g.en+'\')">'
+    +'<span>Not Applicable <span class="ar" style="font-size:10px">غير متاح</span></span></label>'
+    +'<button class="btn btn-d btn-sm" data-gid="'+g.id+'" data-gen="'+g.en+'" onclick="clearGrade(this)"'+(canE?'':' disabled')+'>'
+    +'<i class="ti ti-eraser"></i> Clear <span class="ar" style="font-size:10px">مسح</span></button>'
+    +'</div>';
   h+='<div style="font-size:11px;font-weight:800;margin-bottom:5px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">Student Data <span class="ar" style="text-transform:none">بيانات الطلاب</span></div>';
   h+='<div style="overflow-x:auto"><table class="tbl" style="margin-bottom:12px"><tr>';
   sth.forEach(function(t2){h+='<th><span style="color:#90caf9">'+t2[0]+'</span><br><span class="ar" style="font-size:9px;color:#fca5a5">'+t2[1]+'</span></th>';});
   h+='</tr><tr>';
   skeys.forEach(function(k){
-    h+='<td><input type="number" min="0" value="'+d.st[k]+'" id="st-'+g.id+'-'+k+'" class="ni'+savedCls+'" oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td>';
+    h+='<td><input type="number" min="0" value="'+d.st[k]+'" id="st-'+g.id+'-'+k+'" class="ni'+savedCls+'"'+dis+' oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td>';
   });
   h+='</tr></table></div>';
   h+='<div style="font-size:11px;font-weight:800;margin-bottom:5px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">Judgment (%) <span class="ar" style="text-transform:none">الحكم</span></div>';
@@ -977,32 +1268,47 @@ function gradeCard(g,isAtt,col){
     +'<th><span style="color:#90caf9">SoD</span><br><span class="ar" style="font-size:9px;color:#fca5a5">ذوو الهمم</span></th>'
     +'<th><span style="color:#90caf9">Emirati</span><br><span class="ar" style="font-size:9px;color:#fca5a5">إماراتيون</span></th>'
     +'<th><span style="color:#90caf9">Judgment</span><br><span class="ar" style="font-size:9px;color:#fca5a5">الحكم</span></th></tr>';
-  h+='<tr class="above-row"><td><strong>Above</strong> <span class="ar" style="font-size:10px">متفوق</span><br><span style="font-size:9px;color:var(--text2)">IB 5+</span></td>'
-    +'<td><input type="number" min="0" max="100" value="'+d.j.ab+'" id="ja-'+g.id+'" class="ni'+savedCls+'" oninput="onJ(this,\''+g.id+'\',\''+g.en+'\')"></td>'
-    +'<td><input type="number" min="0" max="100" value="'+(d.j.abm||0)+'" id="jab-m-'+g.id+'" class="ni'+savedCls+'" oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td>'
-    +'<td><input type="number" min="0" max="100" value="'+(d.j.abf||0)+'" id="jab-f-'+g.id+'" class="ni'+savedCls+'" oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td>'
-    +'<td><input type="number" min="0" max="100" value="'+(d.j.abgt||0)+'" id="jab-gt-'+g.id+'" class="ni'+savedCls+'" oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td>'
-    +'<td><input type="number" min="0" max="100" value="'+(d.j.absod||0)+'" id="jab-sod-'+g.id+'" class="ni'+savedCls+'" oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td>'
-    +'<td><input type="number" min="0" max="100" value="'+(d.j.abem||0)+'" id="jab-em-'+g.id+'" class="ni'+savedCls+'" oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td>'
+  h+='<tr class="above-row"><td><strong>'+levelLbl('ab').en+'</strong> <span class="ar" style="font-size:10px">'+levelLbl('ab').ar+'</span><br><span style="font-size:9px;color:var(--text2)">IB 5+</span></td>'
+    +'<td><input type="number" min="0" max="100" value="'+d.j.ab+'" id="ja-'+g.id+'" class="ni'+savedCls+'"'+dis+' oninput="onJ(this,\''+g.id+'\',\''+g.en+'\')"></td>'
+    +'<td><input type="number" min="0" max="100" value="'+(d.j.abm||0)+'" id="jab-m-'+g.id+'" class="ni'+savedCls+'"'+dis+' oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td>'
+    +'<td><input type="number" min="0" max="100" value="'+(d.j.abf||0)+'" id="jab-f-'+g.id+'" class="ni'+savedCls+'"'+dis+' oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td>'
+    +'<td><input type="number" min="0" max="100" value="'+(d.j.abgt||0)+'" id="jab-gt-'+g.id+'" class="ni'+savedCls+'"'+dis+' oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td>'
+    +'<td><input type="number" min="0" max="100" value="'+(d.j.absod||0)+'" id="jab-sod-'+g.id+'" class="ni'+savedCls+'"'+dis+' oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td>'
+    +'<td><input type="number" min="0" max="100" value="'+(d.j.abem||0)+'" id="jab-em-'+g.id+'" class="ni'+savedCls+'"'+dis+' oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td>'
     +'<td rowspan="3" style="vertical-align:middle"><span class="jb '+jCls(j)+'" id="jb-'+g.id+'">'+jLbl(j)+'</span></td></tr>';
-  h+='<tr class="inline-row"><td><strong>In Line</strong> <span class="ar" style="font-size:10px">مطابق</span><br><span style="font-size:9px;color:var(--text2)">IB 4+</span></td>'
-    +'<td><input type="number" min="0" max="100" value="'+d.j.il+'" id="ji-'+g.id+'" class="ni'+savedCls+'" oninput="onJ(this,\''+g.id+'\',\''+g.en+'\')"></td>'
-    +'<td><input type="number" min="0" max="100" value="'+(d.j.ilm||0)+'" id="jil-m-'+g.id+'" class="ni'+savedCls+'" oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td>'
-    +'<td><input type="number" min="0" max="100" value="'+(d.j.ilf||0)+'" id="jil-f-'+g.id+'" class="ni'+savedCls+'" oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td>'
-    +'<td><input type="number" min="0" max="100" value="'+(d.j.ilgt||0)+'" id="jil-gt-'+g.id+'" class="ni'+savedCls+'" oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td>'
-    +'<td><input type="number" min="0" max="100" value="'+(d.j.ilsod||0)+'" id="jil-sod-'+g.id+'" class="ni'+savedCls+'" oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td>'
-    +'<td><input type="number" min="0" max="100" value="'+(d.j.ilem||0)+'" id="jil-em-'+g.id+'" class="ni'+savedCls+'" oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td></tr>';
-  h+='<tr class="below-row"><td><strong>Below</strong> <span class="ar" style="font-size:10px">دون المستوى</span><br><span style="font-size:9px;color:var(--text2)">IB 1-2-3</span></td>'
-    +'<td><input type="number" min="0" max="100" value="'+d.j.bl+'" id="jbl-'+g.id+'" class="ni'+savedCls+'" oninput="onJ(this,\''+g.id+'\',\''+g.en+'\')"></td>'
-    +'<td><input type="number" min="0" max="100" value="'+(d.j.blm||0)+'" id="jbl-m-'+g.id+'" class="ni'+savedCls+'" oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td>'
-    +'<td><input type="number" min="0" max="100" value="'+(d.j.blf||0)+'" id="jbl-f-'+g.id+'" class="ni'+savedCls+'" oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td>'
-    +'<td><input type="number" min="0" max="100" value="'+(d.j.blgt||0)+'" id="jbl-gt-'+g.id+'" class="ni'+savedCls+'" oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td>'
-    +'<td><input type="number" min="0" max="100" value="'+(d.j.blsod||0)+'" id="jbl-sod-'+g.id+'" class="ni'+savedCls+'" oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td>'
-    +'<td><input type="number" min="0" max="100" value="'+(d.j.blem||0)+'" id="jbl-em-'+g.id+'" class="ni'+savedCls+'" oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td></tr>';
+  h+='<tr class="inline-row"><td><strong>'+levelLbl('il').en+'</strong> <span class="ar" style="font-size:10px">'+levelLbl('il').ar+'</span><br><span style="font-size:9px;color:var(--text2)">IB 4+</span></td>'
+    +'<td><input type="number" min="0" max="100" value="'+d.j.il+'" id="ji-'+g.id+'" class="ni'+savedCls+'"'+dis+' oninput="onJ(this,\''+g.id+'\',\''+g.en+'\')"></td>'
+    +'<td><input type="number" min="0" max="100" value="'+(d.j.ilm||0)+'" id="jil-m-'+g.id+'" class="ni'+savedCls+'"'+dis+' oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td>'
+    +'<td><input type="number" min="0" max="100" value="'+(d.j.ilf||0)+'" id="jil-f-'+g.id+'" class="ni'+savedCls+'"'+dis+' oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td>'
+    +'<td><input type="number" min="0" max="100" value="'+(d.j.ilgt||0)+'" id="jil-gt-'+g.id+'" class="ni'+savedCls+'"'+dis+' oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td>'
+    +'<td><input type="number" min="0" max="100" value="'+(d.j.ilsod||0)+'" id="jil-sod-'+g.id+'" class="ni'+savedCls+'"'+dis+' oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td>'
+    +'<td><input type="number" min="0" max="100" value="'+(d.j.ilem||0)+'" id="jil-em-'+g.id+'" class="ni'+savedCls+'"'+dis+' oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td></tr>';
+  h+='<tr class="below-row"><td><strong>'+levelLbl('bl').en+'</strong> <span class="ar" style="font-size:10px">'+levelLbl('bl').ar+'</span><br><span style="font-size:9px;color:var(--text2)">IB 1-2-3</span></td>'
+    +'<td><input type="number" min="0" max="100" value="'+d.j.bl+'" id="jbl-'+g.id+'" class="ni'+savedCls+'"'+dis+' oninput="onJ(this,\''+g.id+'\',\''+g.en+'\')"></td>'
+    +'<td><input type="number" min="0" max="100" value="'+(d.j.blm||0)+'" id="jbl-m-'+g.id+'" class="ni'+savedCls+'"'+dis+' oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td>'
+    +'<td><input type="number" min="0" max="100" value="'+(d.j.blf||0)+'" id="jbl-f-'+g.id+'" class="ni'+savedCls+'"'+dis+' oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td>'
+    +'<td><input type="number" min="0" max="100" value="'+(d.j.blgt||0)+'" id="jbl-gt-'+g.id+'" class="ni'+savedCls+'"'+dis+' oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td>'
+    +'<td><input type="number" min="0" max="100" value="'+(d.j.blsod||0)+'" id="jbl-sod-'+g.id+'" class="ni'+savedCls+'"'+dis+' oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td>'
+    +'<td><input type="number" min="0" max="100" value="'+(d.j.blem||0)+'" id="jbl-em-'+g.id+'" class="ni'+savedCls+'"'+dis+' oninput="onNI(this,\''+g.id+'\',\''+g.en+'\')"></td></tr>';
+  // صف حكم منفصل لكل فئة (Whole/Male/Female/G&T/SoD/Emirati)
+  var jWhole=getJ(d.j.ab,d.j.il,d.j.bl);
+  var jMale=getJ(d.j.abm||0,d.j.ilm||0,d.j.blm||0);
+  var jFemale=getJ(d.j.abf||0,d.j.ilf||0,d.j.blf||0);
+  var jGt=getJ(d.j.abgt||0,d.j.ilgt||0,d.j.blgt||0);
+  var jSod=getJ(d.j.absod||0,d.j.ilsod||0,d.j.blsod||0);
+  var jEm=getJ(d.j.abem||0,d.j.ilem||0,d.j.blem||0);
+  h+='<tr style="background:#fafbff"><td><strong>Judgment</strong> <span class="ar" style="font-size:10px">الحكم</span></td>'
+    +'<td id="jc-whole-'+g.id+'"><span class="jb '+jCls(jWhole)+'" style="font-size:9px;padding:2px 5px">'+jLbl(jWhole)+'</span></td>'
+    +'<td id="jc-m-'+g.id+'"><span class="jb '+jCls(jMale)+'" style="font-size:9px;padding:2px 5px">'+jLbl(jMale)+'</span></td>'
+    +'<td id="jc-f-'+g.id+'"><span class="jb '+jCls(jFemale)+'" style="font-size:9px;padding:2px 5px">'+jLbl(jFemale)+'</span></td>'
+    +'<td id="jc-gt-'+g.id+'"><span class="jb '+jCls(jGt)+'" style="font-size:9px;padding:2px 5px">'+jLbl(jGt)+'</span></td>'
+    +'<td id="jc-sod-'+g.id+'"><span class="jb '+jCls(jSod)+'" style="font-size:9px;padding:2px 5px">'+jLbl(jSod)+'</span></td>'
+    +'<td id="jc-em-'+g.id+'"><span class="jb '+jCls(jEm)+'" style="font-size:9px;padding:2px 5px">'+jLbl(jEm)+'</span></td>'
+    +'<td></td></tr>';
   h+='</table></div>';
   h+='<div class="cwrap"><div class="ctitle2">'+g.en+' | '+termEn()+'</div><canvas id="ch-'+g.id+'" height="100"></canvas></div>';
   h+='<div class="arow" style="background:#f8faff;border-radius:8px;padding:10px;margin-top:10px">'
-    +'<button class="btn '+(isAtt?'btn-att':'btn-prog')+'" id="sv-'+g.id+'" data-gid="'+g.id+'" data-gen="'+g.en+'" onclick="saveG(this)">'
+    +'<button class="btn '+(isAtt?'btn-att':'btn-prog')+'" id="sv-'+g.id+'" data-gid="'+g.id+'" data-gen="'+g.en+'" onclick="saveG(this)"'+(canE?'':' disabled style="opacity:.5;cursor:not-allowed"')+'>'
     +'<i class="ti ti-device-floppy"></i> Save '+g.en+' <span class="ar" style="font-size:10px">حفظ</span></button>'
     +'<button class="btn btn-p btn-sm" data-gid="'+g.id+'" onclick="openShare(this)"><i class="ti ti-share"></i> Share</button>'
     +'<button class="btn btn-o btn-sm" onclick="window.print()"><i class="ti ti-printer"></i> Print</button>'
@@ -1012,31 +1318,54 @@ function gradeCard(g,isAtt,col){
 }
 
 function grpSum(grp,list,nameEn,nameAr,col){
-  var db=DB();var a=0,il=0,b=0,n=0;
+  var db=DB();var a=0,il=0,b=0,n=0,naCount=0;
   list.forEach(function(g){
     var d=db[sel.s]&&db[sel.s][sel.y]&&db[sel.s][sel.y][sel.t]&&db[sel.s][sel.y][sel.t][g.id];
+    if(d&&d.na){naCount++;return;}
     if(d){a+=d.j.ab;il+=d.j.il;b+=d.j.bl;n++;}
   });
-  if(!n)return'';
+  if(!n){
+    if(naCount)return '<div class="card" style="border:2px solid #94a3b8;background:#f8fafc;margin-bottom:20px;text-align:center;padding:14px">'
+      +'<span style="color:#6b7280;font-weight:700"><i class="ti ti-ban"></i> Not Applicable — '+nameEn+'</span></div>';
+    return'';
+  }
   var aa=Math.round(a/n),ai=Math.round(il/n),ab=Math.round(b/n),j=getJ(aa,ai,ab);
   return '<div class="card" style="border:2px solid '+col+';background:#fafbff;margin-bottom:20px">'
     +'<div class="ctitle" style="color:'+col+'"><i class="ti ti-report-analytics"></i> Group Summary — <strong>'+nameEn+'</strong></div>'
     +'<div class="sgrid">'
-    +'<div class="sc"><div class="sv" style="color:#2d7d46">'+aa+'%</div><div style="font-size:11px;font-weight:700;color:var(--text2)">Above</div></div>'
-    +'<div class="sc"><div class="sv" style="color:#1565b0">'+ai+'%</div><div style="font-size:11px;font-weight:700;color:var(--text2)">In Line</div></div>'
-    +'<div class="sc"><div class="sv" style="color:#b71c1c">'+ab+'%</div><div style="font-size:11px;font-weight:700;color:var(--text2)">Below</div></div>'
+    +'<div class="sc"><div class="sv" style="color:#2d7d46">'+aa+'%</div><div style="font-size:11px;font-weight:700;color:var(--text2)">'+levelLbl('ab').en+'</div><div class="ar" style="font-size:10px">'+levelLbl('ab').ar+'</div></div>'
+    +'<div class="sc"><div class="sv" style="color:#1565b0">'+ai+'%</div><div style="font-size:11px;font-weight:700;color:var(--text2)">'+levelLbl('il').en+'</div><div class="ar" style="font-size:10px">'+levelLbl('il').ar+'</div></div>'
+    +'<div class="sc"><div class="sv" style="color:#b71c1c">'+ab+'%</div><div style="font-size:11px;font-weight:700;color:var(--text2)">'+levelLbl('bl').en+'</div><div class="ar" style="font-size:10px">'+levelLbl('bl').ar+'</div></div>'
     +'</div><div style="text-align:center;margin-top:8px"><span class="jb '+jCls(j)+'" style="font-size:13px;padding:5px 16px">'+jLbl(j)+'</span></div></div>';
 }
 
 // ═══════════════════════════════════════════════
 // INPUT & SAVE — Firebase
 // ═══════════════════════════════════════════════
-function onNI(inp,gid,gen){inp.classList.add('ch');markU(gid,gen);}
+function onNI(inp,gid,gen){inp.classList.add('ch');markU(gid,gen);updateColJudgments(gid);}
 function onJ(inp,gid,gen){
   inp.classList.add('ch');markU(gid,gen);
   var a=+(el('ja-'+gid)||{value:0}).value,il=+(el('ji-'+gid)||{value:0}).value,b=+(el('jbl-'+gid)||{value:0}).value;
   var j=getJ(a,il,b),badge=el('jb-'+gid);
   if(badge){badge.textContent=jLbl(j);badge.className='jb '+jCls(j);}
+  updateColJudgments(gid);
+}
+// تحديث حكم كل عمود (Whole/Male/Female/G&T/SoD/Emirati) بشكل منفصل ولحظي
+function updateColJudgments(gid){
+  function gv(id){var e2=el(id);return e2?+e2.value:0;}
+  var cols=[
+    {sfx:'whole',ab:'ja-'+gid,il:'ji-'+gid,bl:'jbl-'+gid},
+    {sfx:'m',ab:'jab-m-'+gid,il:'jil-m-'+gid,bl:'jbl-m-'+gid},
+    {sfx:'f',ab:'jab-f-'+gid,il:'jil-f-'+gid,bl:'jbl-f-'+gid},
+    {sfx:'gt',ab:'jab-gt-'+gid,il:'jil-gt-'+gid,bl:'jbl-gt-'+gid},
+    {sfx:'sod',ab:'jab-sod-'+gid,il:'jil-sod-'+gid,bl:'jbl-sod-'+gid},
+    {sfx:'em',ab:'jab-em-'+gid,il:'jil-em-'+gid,bl:'jbl-em-'+gid}
+  ];
+  cols.forEach(function(c){
+    var j=getJ(gv(c.ab),gv(c.il),gv(c.bl));
+    var cell=el('jc-'+c.sfx+'-'+gid);
+    if(cell)cell.innerHTML='<span class="jb '+jCls(j)+'" style="font-size:9px;padding:2px 5px">'+jLbl(j)+'</span>';
+  });
 }
 function markU(gid,gen){
   unsaved[gid]={lbl:gen};
@@ -1062,7 +1391,8 @@ async function saveG(btn){
     blm:gv('jbl-m-'+gid),blf:gv('jbl-f-'+gid),blgt:gv('jbl-gt-'+gid),blsod:gv('jbl-sod-'+gid),blem:gv('jbl-em-'+gid)};
   var st={};
   ['tot','m','f','gt','sod','em'].forEach(function(k){st[k]=gv('st-'+gid+'-'+k);});
-  var record={st:st,j:j,saved:true};
+  var naCb=el('na-'+gid);
+  var record={st:st,j:j,saved:true,na:naCb?naCb.checked:false};
 
   // Save to local DB
   db[sel.s][sel.y][sel.t][gid]=record;
@@ -1074,13 +1404,69 @@ async function saveG(btn){
   try {
     await fsSet(col, docId, record);
     var sb2=el('sb-g-'+gid);
-    if(sb2)sb2.innerHTML='<span style="font-size:11px;color:#2d7d46;font-weight:700"><i class="ti ti-check"></i> Saved</span>';
+    if(sb2)sb2.innerHTML=record.na
+      ?'<span style="font-size:11px;color:#6b7280;font-weight:700"><i class="ti ti-ban"></i> N/A</span>'
+      :'<span style="font-size:11px;color:#2d7d46;font-weight:700"><i class="ti ti-check"></i> Saved</span>';
     var cv=el('ch-'+gid);
     if(cv&&charts[gid]){charts[gid].data.datasets[0].data=[ab,il,bl];charts[gid].update();}
     notify('✅ Saved to Firebase: '+gen,'ok');
+    logActivity(gid,gen);
   } catch(e){
     notify('❌ Error saving: '+e.message,'err');
   }
+}
+
+// تفعيل/إلغاء "غير متاح" لصف معين — تعطيل الإدخال فورًا، يتطلب الحفظ لتثبيته
+function toggleNA(cb,gid,gen){
+  var card=el('gc-'+gid);
+  if(!card)return;
+  card.querySelectorAll('input.ni').forEach(function(inp){
+    inp.disabled=cb.checked;
+    inp.style.opacity=cb.checked?'.4':'';
+    inp.style.cursor=cb.checked?'not-allowed':'';
+  });
+  markU(gid,gen);
+  var sb=el('sb-g-'+gid);
+  if(sb)sb.innerHTML=cb.checked
+    ?'<span style="font-size:11px;color:#6b7280;font-weight:700"><i class="ti ti-ban"></i> N/A (unsaved)</span>'
+    :'<span style="font-size:11px;color:#e65100;font-weight:700"><i class="ti ti-edit"></i> Modified</span>';
+}
+
+// مسح كل درجات الصف بعد تأكيد المشرف — يصبح Unsaved حتى يضغط Save
+function clearGrade(btn){
+  var gid=btn.getAttribute('data-gid'),gen=btn.getAttribute('data-gen');
+  if(!confirm('Clear ALL grades for '+gen+'? This cannot be undone after saving.\nمسح كل درجات '+gen+'؟'))return;
+  var card=el('gc-'+gid);if(!card)return;
+  card.querySelectorAll('input.ni').forEach(function(inp){inp.value=0;inp.classList.add('ch');});
+  var naCb=el('na-'+gid);if(naCb)naCb.checked=false;
+  card.querySelectorAll('input.ni').forEach(function(inp){inp.disabled=false;inp.style.opacity='';inp.style.cursor='';});
+  var badge=el('jb-'+gid);if(badge){badge.textContent=jLbl('na');badge.className='jb j-na';}
+  updateColJudgments(gid);
+  markU(gid,gen);
+  notify('Cleared (unsaved): '+gen,'ok');
+}
+
+// تسجيل نشاط الحفظ في سجل النشاطات (Activity Log)
+async function logActivity(gid,gen){
+  try{
+    var sub=SUBJECTS.find(function(x){return x.id===sel.s;})||ALL_SUBJECTS_40.find(function(x){return x.id===sel.s;});
+    var yr=YEARS.find(function(x){return x.id===sel.y;});
+    var now=new Date();
+    var entry={
+      userName:(cu&&cu.name)||'Unknown',
+      userU:(cu&&cu.u)||'',
+      section:section==='att'?'Attainment':'Progress',
+      subjectEn:sub?sub.en:sel.s,
+      yearLabel:yr?yr.label:sel.y,
+      term:termEn(),
+      gradeEn:gen,
+      ts:now.getTime(),
+      dateStr:now.toLocaleDateString(),
+      timeStr:now.toLocaleTimeString()
+    };
+    var docId='log_'+now.getTime()+'_'+Math.random().toString(36).slice(2,7);
+    await fsSet('activity_log', docId, entry);
+  }catch(e){ console.error('logActivity error:',e); }
 }
 
 // ═══════════════════════════════════════════════
@@ -1120,6 +1506,11 @@ function pgDashboard(){
   GRADES.forEach(function(g){
     var d=db[sel.s]&&db[sel.s][sel.y]&&db[sel.s][sel.y][sel.t]&&db[sel.s][sel.y][sel.t][g.id];
     if(!d||!d.saved){unsavedGrades.push(g.en);return;}
+    if(d.na){
+      rows+='<tr style="background:#f8fafc"><td><strong>'+g.en+'</strong></td><td>'+g.g+'</td>'
+        +'<td colspan="5" style="text-align:center;color:#6b7280;font-weight:700"><i class="ti ti-ban"></i> Not Applicable — غير متاح</td></tr>';
+      return;
+    }
     var j=getJ(d.j.ab,d.j.il,d.j.bl);
     rows+='<tr><td><strong>'+g.en+'</strong></td><td>'+g.g+'</td><td>'+d.st.tot+'</td>'
       +'<td>'+d.j.ab+'%</td><td>'+d.j.il+'%</td><td>'+d.j.bl+'%</td>'
@@ -1130,7 +1521,7 @@ function pgDashboard(){
     +'<div class="pgtitle" style="margin-bottom:14px;color:'+col+'"><span class="en">Dashboard — '+sub.en+'</span></div>'
     +notice
     +'<div class="card"><div style="overflow-x:auto"><table class="tbl"><tr>'
-    +'<th style="text-align:left">Grade</th><th>Group</th><th>Total</th><th>Above</th><th>In Line</th><th>Below</th><th>Judgment</th>'
+    +'<th style="text-align:left">Grade</th><th>Group</th><th>Total</th><th>'+levelLbl('ab').en+'</th><th>'+levelLbl('il').en+'</th><th>'+levelLbl('bl').en+'</th><th>Judgment</th>'
     +'</tr>'+rows+'</table></div></div>'
     +'<div class="cwrap"><div class="ctitle2">Overview — '+sub.en+' '+yr.label+' '+termEn()+'</div><canvas id="ch-overview" height="200"></canvas></div>';
 }
@@ -1141,44 +1532,44 @@ function pgDashboard(){
 function pgCompare(){
   var sub=SUBJECTS.find(function(x){return x.id===sel.s;})||SUBJECTS[0];
   var isAtt=section==='att';var col=isAtt?'var(--att)':'var(--prog)';
-  var title=isAtt?'Achievement Over Time':'Progress Trends Over Years';
+  var title=isAtt?'Attainment Over Time':'Progress Trends Over Years';
+  var titleAr=isAtt?'التحصيل بمرور الوقت':'متابعة التقدم الدراسي بمرور الوقت';
   var sOpts='';SUBJECTS.forEach(function(s){sOpts+='<option value="'+s.id+'">'+s.en+'</option>';});
   var yOpts='';YEARS.forEach(function(y){yOpts+='<option value="'+y.id+'">'+y.label+'</option>';});
   var tOpts='<option value="t1">Term 1</option><option value="t2">Term 2</option><option value="t3">Term 3</option>';
   var gOpts='<option value="ALL">All Grades</option>';
   GRADES.forEach(function(g){gOpts+='<option value="'+g.id+'">'+g.en+'</option>';});
-  function pt(pre,titlePt,ci){
-    var cc=['var(--att)','var(--prog)','#1b5e20'][ci];
+  function pt(pre,titlePt,titlePtAr,ci){
+    var cc=['#1565b0','#6a1b9a','#1b5e20'][ci];
     var ic=['ti-flag','ti-route','ti-flag-check'][ci];
     return '<div class="card" style="border-top:3px solid '+cc+'">'
-      +'<div class="ctitle" style="color:'+cc+'"><i class="ti '+ic+'"></i> <span style="font-weight:800">'+titlePt+'</span></div>'
-      +'<div class="field" style="margin-bottom:8px"><label>Subject</label><select id="'+pre+'-s" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+sOpts+'</select></div>'
-      +'<div class="field" style="margin-bottom:8px"><label>Year</label><select id="'+pre+'-y" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+yOpts+'</select></div>'
-      +'<div class="field" style="margin-bottom:8px"><label>Term</label><select id="'+pre+'-t" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+tOpts+'</select></div>'
-      +'<div class="field" style="margin:0"><label>Grade</label><select id="'+pre+'-g" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+gOpts+'</select></div>'
+      +'<div class="ctitle" style="color:'+cc+'"><i class="ti '+ic+'"></i> <span style="font-weight:800">'+titlePt+'</span> <span class="ar" style="font-size:11px">'+titlePtAr+'</span></div>'
+      +'<div class="field" style="margin-bottom:8px"><label>Subject <span class="ar" style="font-size:10px">المادة</span></label><select id="'+pre+'-s" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+sOpts+'</select></div>'
+      +'<div class="field" style="margin-bottom:8px"><label>Year <span class="ar" style="font-size:10px">السنة</span></label><select id="'+pre+'-y" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+yOpts+'</select></div>'
+      +'<div class="field" style="margin-bottom:8px"><label>Term <span class="ar" style="font-size:10px">الفصل</span></label><select id="'+pre+'-t" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+tOpts+'</select></div>'
+      +'<div class="field" style="margin:0"><label>Grade <span class="ar" style="font-size:10px">الصف</span></label><select id="'+pre+'-g" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+gOpts+'</select></div>'
       +'</div>';
   }
   return mkbc([{t:isAtt?'Attainment':'Progress',fn:'_goSection(\''+section+'\')'},{t:sub?sub.en:'',fn:'pickSubBC()'},{t:title}])
-    +'<div class="pgtitle" style="margin-bottom:14px"><span style="font-size:20px;font-weight:800;color:'+col+'">'+title+'</span></div>'
+    +'<div class="pgtitle" style="margin-bottom:14px"><span style="font-size:20px;font-weight:800;color:'+col+'">'+title+'</span><span class="ar" style="display:block;font-size:14px;font-weight:800;margin-top:2px">'+titleAr+'</span></div>'
     +'<div class="card" style="margin-bottom:14px">'
-    +'<div class="ctitle" style="color:'+col+'"><i class="ti ti-filter"></i> <strong>Comparison Options</strong></div>'
-    +'<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:800;margin-bottom:7px">Data Filter</div>'
+    +'<div class="ctitle" style="color:'+col+'"><i class="ti ti-filter"></i> <strong>Comparison Options</strong> <span class="ar" style="font-size:12px">خيارات المقارنة</span></div>'
+    +'<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:800;margin-bottom:7px">Data Filter <span class="ar">مرشح البيانات</span></div>'
     +'<div style="display:flex;gap:7px;flex-wrap:wrap">'
-    +'<button id="fb-all" class="fbtn on" onclick="setFilt(\'all\')"><i class="ti ti-users"></i> All</button>'
-    +'<button id="fb-male" class="fbtn" onclick="setFilt(\'male\')"><i class="ti ti-gender-male"></i> Male</button>'
-    +'<button id="fb-female" class="fbtn" onclick="setFilt(\'female\')"><i class="ti ti-gender-female"></i> Female</button>'
-    +'<button id="fb-sod" class="fbtn" onclick="setFilt(\'sod\')"><i class="ti ti-heart-handshake"></i> SoD</button>'
-    +'<button id="fb-emirati" class="fbtn" onclick="setFilt(\'emirati\')"><i class="ti ti-flag"></i> Emirati</button>'
+    +'<button id="fb-all" class="fbtn on" onclick="setFilt(\'all\')"><i class="ti ti-users"></i> All <span class="ar" style="font-size:10px">الكل</span></button>'
+    +'<button id="fb-male" class="fbtn" onclick="setFilt(\'male\')"><i class="ti ti-gender-male"></i> Male <span class="ar" style="font-size:10px">بنين</span></button>'
+    +'<button id="fb-female" class="fbtn" onclick="setFilt(\'female\')"><i class="ti ti-gender-female"></i> Female <span class="ar" style="font-size:10px">بنات</span></button>'
+    +'<button id="fb-sod" class="fbtn" onclick="setFilt(\'sod\')"><i class="ti ti-heart-handshake"></i> SoD <span class="ar" style="font-size:10px">ذوو الهمم</span></button>'
+    +'<button id="fb-emirati" class="fbtn" onclick="setFilt(\'emirati\')"><i class="ti ti-flag"></i> Emirati <span class="ar" style="font-size:10px">إماراتيون</span></button>'
     +'</div></div>'
     +'<div style="display:flex;align-items:center;gap:10px">'
     +'<label class="twrap"><input type="checkbox" id="midTog" onchange="togMid()"><span class="tslider"></span></label>'
-    +'<span style="font-weight:800">Enable Waypoint</span></div></div>'
+    +'<span style="font-weight:800">Enable Waypoint <span class="ar" style="font-size:12px">تفعيل نقطة المرور</span></span></div></div>'
     +'<div id="cmpGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">'
-    +pt('cf','Start Point',0)+pt('ct','End Point',2)+'</div>'
-    +'<div id="midWrap" style="margin-bottom:14px;display:none">'+pt('cm','Waypoint',1)+'</div>'
+    +pt('cf','Start Point','نقطة البدء',0)+pt('ct','End Point','نقطة الوصول',2)+'</div>'
     +'<div style="text-align:center;margin-bottom:18px">'
     +'<button class="btn '+(isAtt?'btn-att':'btn-prog')+'" onclick="runCmp()" style="padding:12px 32px;font-size:15px">'
-    +'<i class="ti ti-search"></i> <strong>Run Comparison</strong></button></div>'
+    +'<i class="ti ti-search"></i> <strong>Run Comparison</strong> <span class="ar" style="font-size:12px">تشغيل المقارنة</span></button></div>'
     +'<div id="cmpResult"></div>';
 }
 
@@ -1189,10 +1580,37 @@ function setFilt(f){
 }
 function togMid(){
   var on=el('midTog').checked;
-  el('midWrap').style.display=on?'block':'none';
-  el('cmpGrid').style.gridTemplateColumns=on?'1fr 1fr 1fr':'1fr 1fr';
+  var grid=el('cmpGrid');
+  if(on){
+    grid.style.gridTemplateColumns='1fr 1fr 1fr';
+    // بناء بطاقة Waypoint وحقن HTML مباشرة في المنتصف
+    var sOpts='';SUBJECTS.forEach(function(s){sOpts+='<option value="'+s.id+'">'+s.en+'</option>';});
+    var yOpts='';YEARS.forEach(function(y){yOpts+='<option value="'+y.id+'">'+y.label+'</option>';});
+    var tOpts='<option value="t1">Term 1</option><option value="t2">Term 2</option><option value="t3">Term 3</option>';
+    var gOpts='<option value="ALL">All Grades</option>';
+    GRADES.forEach(function(g){gOpts+='<option value="'+g.id+'">'+g.en+'</option>';});
+    var cc='#6a1b9a';
+    var midCard='<div id="midCard" class="card" style="border-top:3px solid '+cc+'">'
+      +'<div class="ctitle" style="color:'+cc+'"><i class="ti ti-route"></i> <span style="font-weight:800">Waypoint</span> <span class="ar" style="font-size:11px">نقطة المرور</span></div>'
+      +'<div class="field" style="margin-bottom:8px"><label>Subject <span class="ar" style="font-size:10px">المادة</span></label><select id="cm-s" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+sOpts+'</select></div>'
+      +'<div class="field" style="margin-bottom:8px"><label>Year <span class="ar" style="font-size:10px">السنة</span></label><select id="cm-y" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+yOpts+'</select></div>'
+      +'<div class="field" style="margin-bottom:8px"><label>Term <span class="ar" style="font-size:10px">الفصل</span></label><select id="cm-t" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+tOpts+'</select></div>'
+      +'<div class="field" style="margin:0"><label>Grade <span class="ar" style="font-size:10px">الصف</span></label><select id="cm-g" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+gOpts+'</select></div>'
+      +'</div>';
+    // أدرج بطاقة Waypoint بعد البطاقة الأولى (Start) مباشرة
+    var cards=grid.querySelectorAll('.card');
+    if(cards.length>=1){
+      cards[0].insertAdjacentHTML('afterend',midCard);
+    }else{
+      grid.insertAdjacentHTML('beforeend',midCard);
+    }
+  }else{
+    grid.style.gridTemplateColumns='1fr 1fr';
+    var mid=el('midCard');if(mid)mid.remove();
+  }
 }
 function filtLbl(){return{all:'All',male:'Male',female:'Female',sod:'SoD',emirati:'Emirati'}[activeFilt]||'All';}
+function filtLblAr(){return{all:'الكل',male:'بنين',female:'بنات',sod:'ذوو الهمم',emirati:'إماراتيون'}[activeFilt]||'الكل';}
 
 function runCmp(){
   var db=DB();
@@ -1208,19 +1626,29 @@ function runCmp(){
   var tls={t1:'T1',t2:'T2',t3:'T3'};
   var html2='';var chartQueue=[];
 
+  // استخراج قيم Above/InLine/Below الصحيحة من سجل الحكم حسب الفلتر المُفعّل (All/Male/Female/SoD/Emirati)
+  function filtFields(j){
+    if(activeFilt==='male')return{ab:j.abm||0,il:j.ilm||0,bl:j.blm||0};
+    if(activeFilt==='female')return{ab:j.abf||0,il:j.ilf||0,bl:j.blf||0};
+    if(activeFilt==='sod')return{ab:j.absod||0,il:j.ilsod||0,bl:j.blsod||0};
+    if(activeFilt==='emirati')return{ab:j.abem||0,il:j.ilem||0,bl:j.blem||0};
+    return{ab:j.ab||0,il:j.il||0,bl:j.bl||0};
+  }
+
   function getAvg(db2,s,y,t,gradeId){
     if(gradeId==='ALL'){
       var tot={ab:0,il:0,bl:0},n=0;
       GRADES.forEach(function(g){
         var d=db2[s]&&db2[s][y]&&db2[s][y][t]&&db2[s][y][t][g.id];
-        if(d&&d.saved){tot.ab+=d.j.ab;tot.il+=d.j.il;tot.bl+=d.j.bl;n++;}
+        if(d&&d.saved&&!d.na){var fv=filtFields(d.j);tot.ab+=fv.ab;tot.il+=fv.il;tot.bl+=fv.bl;n++;}
       });
       if(!n)return null;
       return{ab:Math.round(tot.ab/n),il:Math.round(tot.il/n),bl:Math.round(tot.bl/n)};
     }
     var d2=db2[s]&&db2[s][y]&&db2[s][y][t]&&db2[s][y][t][gradeId];
     if(!d2||!d2.saved)return null;
-    return{ab:d2.j.ab,il:d2.j.il,bl:d2.j.bl};
+    if(d2.na)return'NA';
+    return filtFields(d2.j);
   }
 
   var gradesToShow=sfG==='ALL'?GRADES:GRADES.filter(function(g){return g.id===sfG;});
@@ -1228,53 +1656,408 @@ function runCmp(){
     var fG=sfG==='ALL'?g.id:sfG,mG=smG==='ALL'?g.id:smG,tG=stG==='ALL'?g.id:stG;
     var dF=getAvg(db,sf,yf,tf,fG),dM=midOn?getAvg(db,sm,ym,tm,mG):null,dT=getAvg(db,st,yt,tt,tG);
     var noData='<span style="color:#b71c1c;font-weight:700;font-size:11px">No Data Saved</span>';
-    function valCell(d){return d?'<strong>'+d.ab+'%</strong>':noData;}
+    var naBadge='<span style="color:#6b7280;font-weight:700;font-size:11px"><i class="ti ti-ban"></i> N/A</span>';
+    function isNA(d){return d==='NA';}
+    function valCell(d){return isNA(d)?naBadge:(d?'<strong>'+d.ab+'%</strong>':noData);}
     function deltaCell(dA,dB){
+      if(isNA(dA)||isNA(dB))return naBadge;
       if(!dA||!dB)return'-';
       var dv=dB.ab-dA.ab;
       return'<span style="font-weight:800;color:'+(dv>0?'#2d7d46':dv<0?'#b71c1c':'#888')+'">'+(dv>0?'↑':dv<0?'↓':'→')+Math.abs(dv)+'%</span>';
     }
-    function jCell(d){if(!d)return'—';var j=getJ(d.ab,d.il,d.bl);return'<span class="jb '+jCls(j)+'">'+jLbl(j)+'</span>';}
+    function jCell(d){if(isNA(d))return naBadge;if(!d)return'—';var j=getJ(d.ab,d.il,d.bl);return'<span class="jb '+jCls(j)+'">'+jLbl(j)+'</span>';}
     var midTh=midOn?'<th style="text-align:center;background:#6a1b9a">Waypoint</th>':'';
-    var totalD=dF&&dT?deltaCell(dF,dT):(midOn&&dM&&dT?deltaCell(dM,dT):'-');
+    var totalD=(dF&&dT&&!isNA(dF)&&!isNA(dT))?deltaCell(dF,dT):((midOn&&dM&&dT&&!isNA(dM)&&!isNA(dT))?deltaCell(dM,dT):(isNA(dF)||isNA(dT)?naBadge:'-'));
+    function valOf(d,key){return(d&&!isNA(d))?d[key]+'%':(isNA(d)?naBadge:noData);}
+    var repTypeEn=isAtt?'Attainment Report Comparison':'Progress Report Comparison';
+    var repTypeAr=isAtt?'تقرير مقارنات التحصيل الدراسي':'تقرير مقارنات التقدم الدراسي';
+    var titleEn=repTypeEn+' / '+ytO.code+' / '+tls[tt]+' / Subject: '+stO.en+' / '+g.en+' / '+filtLbl();
+    var titleAr='— للعام الأكاديمي '+ytO.label+' — المادة: '+stO.ar+' — '+g.ar+' — '+filtLblAr();
     html2+='<div class="card" style="margin-bottom:16px;border-top:3px solid '+col+'">'
-      +'<div style="font-size:15px;font-weight:800;color:'+col+';margin-bottom:12px">'+g.en+' — '+ytO.label+' '+tls[tt]+'</div>'
+      +'<div style="text-align:center;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border)">'
+      +'<div style="font-size:14px;font-weight:800;color:'+col+'">'+titleEn+'</div>'
+      +'<div class="ar" style="font-size:13px;font-weight:800;margin-top:3px">'+repTypeAr+' '+titleAr+'</div>'
+      +'</div>'
       +'<div style="overflow-x:auto"><table class="tbl" style="border:2px solid '+col+'">'
       +'<tr><th style="text-align:left;background:#1a2e5a">Level</th>'
       +'<th style="text-align:center;background:#1565b0">Start<br><span style="font-size:9px;font-weight:400">'+yfO.label+' '+tls[tf]+'</span></th>'
       +midTh
       +'<th style="text-align:center;background:#1b5e20">End<br><span style="font-size:9px;font-weight:400">'+ytO.label+' '+tls[tt]+'</span></th>'
       +'<th style="text-align:center;background:#374151">Δ Change</th></tr>'
-      +'<tr class="above-row"><td><strong>Above</strong></td><td style="text-align:center">'+valCell(dF)+'</td>'+(midOn?'<td style="text-align:center">'+(dM?dM.ab+'%':noData)+'</td>':'')+'<td style="text-align:center">'+valCell(dT)+'</td><td style="text-align:center">'+totalD+'</td></tr>'
-      +'<tr class="inline-row"><td><strong>In Line</strong></td><td style="text-align:center">'+(dF?dF.il+'%':noData)+'</td>'+(midOn?'<td style="text-align:center">'+(dM?dM.il+'%':noData)+'</td>':'')+'<td style="text-align:center">'+(dT?dT.il+'%':noData)+'</td><td></td></tr>'
-      +'<tr class="below-row"><td><strong>Below</strong></td><td style="text-align:center">'+(dF?dF.bl+'%':noData)+'</td>'+(midOn?'<td style="text-align:center">'+(dM?dM.bl+'%':noData)+'</td>':'')+'<td style="text-align:center">'+(dT?dT.bl+'%':noData)+'</td><td></td></tr>'
+      +'<tr class="above-row"><td><strong>'+levelLbl('ab').en+'</strong></td><td style="text-align:center">'+valCell(dF)+'</td>'+(midOn?'<td style="text-align:center">'+valCell(dM)+'</td>':'')+'<td style="text-align:center">'+valCell(dT)+'</td><td style="text-align:center">'+totalD+'</td></tr>'
+      +'<tr class="inline-row"><td><strong>'+levelLbl('il').en+'</strong></td><td style="text-align:center">'+valOf(dF,'il')+'</td>'+(midOn?'<td style="text-align:center">'+valOf(dM,'il')+'</td>':'')+'<td style="text-align:center">'+valOf(dT,'il')+'</td><td></td></tr>'
+      +'<tr class="below-row"><td><strong>'+levelLbl('bl').en+'</strong></td><td style="text-align:center">'+valOf(dF,'bl')+'</td>'+(midOn?'<td style="text-align:center">'+valOf(dM,'bl')+'</td>':'')+'<td style="text-align:center">'+valOf(dT,'bl')+'</td><td></td></tr>'
       +'<tr><td><strong>Judgment</strong></td><td style="text-align:center">'+jCell(dF)+'</td>'+(midOn?'<td style="text-align:center">'+jCell(dM)+'</td>':'')+'<td style="text-align:center">'+jCell(dT)+'</td><td></td></tr>'
       +'</table></div>';
-    if(dF||dM||dT){
+    if((dF&&!isNA(dF))||(dM&&!isNA(dM))||(dT&&!isNA(dT))){
       html2+='<div class="cwrap"><canvas id="ch-cmp-'+g.id+'" height="130"></canvas></div>';
-      chartQueue.push({id:g.id,dF:dF,dM:dM,dT:dT,yfO:yfO,ytO:ytO});
+      chartQueue.push({id:g.id,dF:isNA(dF)?null:dF,dM:isNA(dM)?null:dM,dT:isNA(dT)?null:dT,yfO:yfO,ymO:(YEARS.find(function(x){return x.id===ym;})||yfO),ytO:ytO,tf:tf,tm:tm,tt:tt});
     }
     html2+='</div>';
   });
   el('cmpResult').innerHTML=html2;
   setTimeout(function(){
+    var tlsFull={t1:'T1',t2:'T2',t3:'T3'};
     chartQueue.forEach(function(item){
       var cv=el('ch-cmp-'+item.id);if(!cv)return;
-      var ds=[];
-      if(item.dF)ds.push({label:'Start '+item.yfO.label,data:[item.dF.ab,item.dF.il,item.dF.bl],backgroundColor:'rgba(21,101,176,.5)',borderColor:'#1565b0',borderWidth:2,borderRadius:4});
-      if(midOn&&item.dM)ds.push({label:'Waypoint',data:[item.dM.ab,item.dM.il,item.dM.bl],backgroundColor:'rgba(106,27,154,.4)',borderColor:'#6a1b9a',borderWidth:2,borderRadius:4});
-      if(item.dT)ds.push({label:'End '+item.ytO.label,data:[item.dT.ab,item.dT.il,item.dT.bl],backgroundColor:'rgba(27,94,32,.5)',borderColor:'#1b5e20',borderWidth:2,borderRadius:4});
-      if(!ds.length)return;
-      new Chart(cv.getContext('2d'),{type:'bar',data:{labels:['Above','In Line','Below'],datasets:ds},
-        options:{responsive:true,plugins:{legend:{labels:{font:{family:'Montserrat',weight:'600'}}}},
-          scales:{y:{beginAtZero:true,max:100,ticks:{callback:function(v){return v+'%';}}}}}});
+      var labels=[],dataAb=[],dataIl=[],dataBl=[];
+      if(item.dF){labels.push('Start نقطة البدء '+item.yfO.label+' '+tlsFull[item.tf]);dataAb.push(item.dF.ab);dataIl.push(item.dF.il);dataBl.push(item.dF.bl);}
+      if(midOn&&item.dM){labels.push('Waypoint نقطة المرور '+item.ymO.label+' '+tlsFull[item.tm]);dataAb.push(item.dM.ab);dataIl.push(item.dM.il);dataBl.push(item.dM.bl);}
+      if(item.dT){labels.push('End نقطة الوصول '+item.ytO.label+' '+tlsFull[item.tt]);dataAb.push(item.dT.ab);dataIl.push(item.dT.il);dataBl.push(item.dT.bl);}
+      if(!labels.length)return;
+      var ds=[
+        {label:levelLbl('ab').en+' / '+levelLbl('ab').ar,data:dataAb,backgroundColor:'rgba(45,125,70,.65)',borderColor:'#2d7d46',borderWidth:2,borderRadius:4},
+        {label:levelLbl('il').en+' / '+levelLbl('il').ar,data:dataIl,backgroundColor:'rgba(21,101,176,.65)',borderColor:'#1565b0',borderWidth:2,borderRadius:4},
+        {label:levelLbl('bl').en+' / '+levelLbl('bl').ar,data:dataBl,backgroundColor:'rgba(183,28,28,.65)',borderColor:'#b71c1c',borderWidth:2,borderRadius:4}
+      ];
+      new Chart(cv.getContext('2d'),{type:'bar',data:{labels:labels,datasets:ds},
+        options:{responsive:true,plugins:{legend:{labels:{font:{family:'Montserrat',weight:'600'}}},tooltip:{callbacks:{label:function(ctx){return ctx.dataset.label.split(' / ')[0]+' '+ctx.parsed.y+'%.';}}},datalabels:{anchor:'end',align:'top',font:{weight:'700',size:9},formatter:function(v,ctx){return ctx.dataset.label.split(' / ')[0]+': '+v+'%';},color:'#1e293b'}},
+          scales:{y:{beginAtZero:true,max:115,ticks:{callback:function(v){return v+'%';}}}}}});
     });
   },100);
 }
 
 // ═══════════════════════════════════════════════
-// CHARTS
+// STAGE REPORT — تقرير المراحل
 // ═══════════════════════════════════════════════
+var stageSt={stage:null,cohort:false,
+  f:{s:null,y:null,t:'t1'},m:{s:null,y:null,t:'t1'},e:{s:null,y:null,t:'t1'}};
+
+function pgStageReport(){
+  var isAtt=section==='att';var col=isAtt?'var(--att)':'var(--prog)';
+  var title=isAtt?'Stage Attainment Report':'Stage Progress Report';
+  var titleAr='تقرير المراحل';
+  var sOpts='';SUBJECTS.forEach(function(s){sOpts+='<option value="'+s.id+'">'+s.en+'</option>';});
+  var yOpts='';YEARS.forEach(function(y){yOpts+='<option value="'+y.id+'">'+y.label+'</option>';});
+  var tOpts='<option value="t1">Term 1</option><option value="t2">Term 2</option><option value="t3">Term 3</option>';
+  var stOpts='<option value="">— Select Stage —</option>';
+  ['KG','PYP','MYP','DP'].forEach(function(k){stOpts+='<option value="'+k+'">'+STAGES[k].label+'</option>';});
+  var lockBg=stageSt.stage?'background:#e3f2fd;border-color:#1565b0':'';
+  var cohortBg=stageSt.cohort?'background:#fce4ec;border-color:#c2185b':'';
+
+  function pt(pre,titlePt,titlePtAr,ci,isStart){
+    var cc=['#1565b0','#6a1b9a','#1b5e20'][ci];
+    var ic=['ti-flag','ti-route','ti-flag-check'][ci];
+    var box=stageSt[pre];
+    var stageField=isStart
+      ? '<div class="field" style="margin:0"><label>Stage <span class="ar" style="font-size:10px">المرحلة</span></label>'
+        +'<select id="sr-'+pre+'-stage" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px" onchange="setStageFromStart(this.value)">'+stOpts+'</select></div>'
+      : '<div class="field" style="margin:0"><label>Stage <span class="ar" style="font-size:10px">المرحلة</span></label>'
+        +'<div onclick="stageLockedWarn()" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:#f1f5f9;color:var(--text2);cursor:not-allowed;font-size:13px">'+(stageSt.stage?STAGES[stageSt.stage].label:'— Start Point first —')+'</div></div>';
+    return '<div class="card" id="sr-card-'+pre+'" style="border-top:3px solid '+cc+';'+lockBg+'">'
+      +'<div class="ctitle" style="color:'+cc+'"><i class="ti '+ic+'"></i> <span style="font-weight:800">'+titlePt+'</span> <span class="ar" style="font-size:11px">'+titlePtAr+'</span></div>'
+      +'<div class="field" style="margin-bottom:8px"><label>Subject <span class="ar" style="font-size:10px">المادة</span></label><select id="sr-'+pre+'-s" '+(pre!=='f'?'disabled':'')+' style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px;'+(pre!=='f'?'background:#f1f5f9':'')+'" onchange="syncStageSubject(this.value)">'+sOpts+'</select></div>'
+      +'<div class="field" style="margin-bottom:8px"><label>Year <span class="ar" style="font-size:10px">السنة</span></label><select id="sr-'+pre+'-y" '+(stageSt.cohort&&pre!=='e'?'disabled':'')+' style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+yOpts+'</select></div>'
+      +'<div class="field" style="margin-bottom:8px"><label>Term <span class="ar" style="font-size:10px">الفصل</span></label><select id="sr-'+pre+'-t" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+tOpts+'</select></div>'
+      +stageField
+      +(pre==='e'?'':'')
+      +'</div>';
+  }
+  return mkbc([{t:isAtt?'Attainment':'Progress',fn:'_goSection(\''+section+'\')'},{t:title}])
+    +'<div class="pgtitle" style="margin-bottom:14px"><span style="font-size:20px;font-weight:800;color:'+col+'">'+title+'</span><span class="ar" style="display:block;font-size:14px;font-weight:800;margin-top:2px">'+titleAr+'</span></div>'
+    +'<div class="card" style="margin-bottom:14px;background:#eff6ff;border:1.5px solid #bfdbfe">'
+    +'<div style="font-size:12px;line-height:1.6"><i class="ti ti-info-circle"></i> Choose a stage from <strong>Start Point</strong> — it will lock the same stage in Waypoint &amp; End Point. Subject stays the same across all three.'
+    +'<div class="ar" style="margin-top:4px">اختر المرحلة من نقطة البدء — سيتم قفل نفس المرحلة في نقطة المرور والوصول. تبقى المادة ثابتة في الثلاث نقاط.</div></div></div>'
+    +'<div id="srGrid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px">'
+    +pt('f','Start Point','نقطة البدء',0,true)+pt('m','Waypoint','نقطة المرور',1,false)+pt('e','End Point','نقطة الوصول',2,false)+'</div>'
+    +'<div style="text-align:center;margin-bottom:18px">'
+    +'<button class="btn '+(isAtt?'btn-att':'btn-prog')+'" onclick="runStageReport()" style="padding:12px 32px;font-size:15px">'
+    +'<i class="ti ti-search"></i> <strong>Run Stage Report</strong> <span class="ar" style="font-size:12px">تشغيل تقرير المراحل</span></button></div>'
+    +'<div id="srResult"></div>';
+}
+
+function syncStageSubject(v){
+  ['m','e'].forEach(function(p){var s=el('sr-'+p+'-s');if(s)s.value=v;});
+}
+function setStageFromStart(v){
+  stageSt.stage=v||null;
+  render();
+}
+function stageLockedWarn(){
+  notify('Change the stage from Start Point first / يجب تغيير المرحلة من نقطة البدء أولاً','err');
+}
+function toggleFullCohort(checked){
+  stageSt.cohort=checked;
+  if(checked){
+    var yeSel=el('sr-e-y');
+    var ye=yeSel?yeSel.value:(YEARS[YEARS.length-1]||{}).id;
+    var yeIdx=YEARS.findIndex(function(y){return y.id===ye;});
+    var teSel=el('sr-e-t');
+    var te=teSel?teSel.value:'t1';
+    if(yeIdx>=1){stageSt.autoM={y:YEARS[yeIdx-1].id,t:te};}else{stageSt.autoM=null;}
+    if(yeIdx>=2){stageSt.autoF={y:YEARS[yeIdx-2].id,t:te};}else{stageSt.autoF=null;}
+    stageSt.autoE_y=ye;
+  }
+  render();
+  if(checked){
+    setTimeout(function(){
+      var fy=el('sr-f-y'),ft=el('sr-f-t'),my=el('sr-m-y'),mt=el('sr-m-t');
+      if(stageSt.autoF&&fy){fy.value=stageSt.autoF.y;}
+      if(stageSt.autoF&&ft){ft.value=stageSt.autoF.t;}
+      if(stageSt.autoM&&my){my.value=stageSt.autoM.y;}
+      if(stageSt.autoM&&mt){mt.value=stageSt.autoM.t;}
+      if(!stageSt.autoF||!stageSt.autoM){notify('End Point year is too early for Full Cohort — choose a later year / سنة نقطة الوصول مبكرة جدًا، اختر سنة لاحقة','err');}
+    },50);
+  }
+}
+
+function runStageReport(){
+  if(!stageSt.stage){notify('Please select a Stage in Start Point first / يرجى اختيار المرحلة من نقطة البدء أولاً','err');return;}
+  var isAtt=section==='att';var col=isAtt?'var(--att)':'var(--prog)';
+  var db=DB();
+  var sf=el('sr-f-s').value, sm=el('sr-m-s').value, se=el('sr-e-s').value;
+  var yf=el('sr-f-y').value, tf=el('sr-f-t').value;
+  var ye=el('sr-e-y').value, te=el('sr-e-t').value;
+  var ym=el('sr-m-y')?el('sr-m-y').value:yf, tm=el('sr-m-t')?el('sr-m-t').value:tf;
+
+  var gradesF,gradesM,gradesE;
+  gradesE=stageGrades(stageSt.stage);
+
+  if(stageSt.cohort){
+    var yeIdx=YEARS.findIndex(function(y){return y.id===ye;});
+    var yfIdx=YEARS.findIndex(function(y){return y.id===yf;});
+    var ymIdx=YEARS.findIndex(function(y){return y.id===ym;});
+    if(yeIdx<0){notify('Select a valid End Point year first / يرجى اختيار سنة صحيحة لنقطة الوصول','err');return;}
+    var diffF=yeIdx-yfIdx, diffM=yeIdx-ymIdx;
+    if(diffF<0||diffM<0){notify('Start/Waypoint year must be before End Point year for Full Cohort / يجب أن تكون سنة البدء/المرور قبل سنة الوصول','err');return;}
+    gradesF=shiftStageGrades(stageSt.stage,diffF);
+    gradesM=shiftStageGrades(stageSt.stage,diffM);
+    if(gradesF===null||gradesM===null){
+      notify('Cohort goes back beyond KG1 — reduce the year gap / تجاوز الترحيل أقدم مرحلة (KG1)، يرجى تقليل فرق السنوات','err');
+      return;
+    }
+  }else{
+    gradesF=stageGrades(stageSt.stage);
+    gradesM=stageGrades(stageSt.stage);
+  }
+
+  function filtFieldsSt(j){
+    if(activeFilt==='male')return{ab:j.abm||0,il:j.ilm||0,bl:j.blm||0};
+    if(activeFilt==='female')return{ab:j.abf||0,il:j.ilf||0,bl:j.blf||0};
+    if(activeFilt==='sod')return{ab:j.absod||0,il:j.ilsod||0,bl:j.blsod||0};
+    if(activeFilt==='emirati')return{ab:j.abem||0,il:j.ilem||0,bl:j.blem||0};
+    return{ab:j.ab||0,il:j.il||0,bl:j.bl||0};
+  }
+  function avgFor(s,y,t,gradesList){
+    var tot={ab:0,il:0,bl:0},n=0;
+    gradesList.forEach(function(g){
+      var d=db[s]&&db[s][y]&&db[s][y][t]&&db[s][y][t][g.id];
+      if(d&&d.saved&&!d.na){var fv=filtFieldsSt(d.j);tot.ab+=fv.ab;tot.il+=fv.il;tot.bl+=fv.bl;n++;}
+    });
+    if(!n)return null;
+    return{ab:Math.round(tot.ab/n),il:Math.round(tot.il/n),bl:Math.round(tot.bl/n)};
+  }
+
+  var dF=avgFor(sf,yf,tf,gradesF);
+  var dM=avgFor(sm,ym,tm,gradesM);
+  var dT=avgFor(se,ye,te,gradesE);
+
+  var sub=SUBJECTS.find(function(x){return x.id===se;})||ALL_SUBJECTS_40.find(function(x){return x.id===se;});
+  var yt=YEARS.find(function(x){return x.id===ye;});
+  var stg=STAGES[stageSt.stage];
+  var tls={t1:'Term 1',t2:'Term 2',t3:'Term 3'};
+  var tlsAr={t1:'الفصل الدراسي الأول',t2:'الفصل الدراسي الثاني',t3:'الفصل الدراسي الثالث'};
+
+  var repTypeEn=isAtt?'Attainment Report Comparison':'Progress Report Comparison';
+  var repTypeAr=isAtt?'تقرير مقارنات التحصيل الدراسي':'تقرير مقارنات التقدم الدراسي';
+  var titleEn=stg.label+' — '+repTypeEn+' / '+(yt?yt.code:'')+'_ '+tls[te]+'_Subject: '+(sub?sub.en:'');
+  var titleAr2='تقرير مقارنات '+(isAtt?'التحصيل الدراسي':'التقدم الدراسي')+' – للعام الأكاديمي '+(yt?yt.label:'')+' – المرحلة '+stg.ar+' – '+tlsAr[te];
+
+  function noDataOr(d){return d?'':'<span style="color:#b71c1c;font-weight:700;font-size:11px">No Data Saved</span>';}
+  function valCell(d){return d?'<strong>'+d.ab+'%</strong>':noDataOr(d);}
+  function valOf(d,key){return d?d[key]+'%':noDataOr(d);}
+  function jCellSt(d){if(!d)return'—';var j=getJ(d.ab,d.il,d.bl);return'<span class="jb '+jCls(j)+'">'+jLbl(j)+'</span>';}
+  var deltaTxt='-';
+  if(dF&&dT){var dv=dT.ab-dF.ab;deltaTxt='<span style="font-weight:800;color:'+(dv>0?'#2d7d46':dv<0?'#b71c1c':'#888')+'">'+(dv>0?'↑':dv<0?'↓':'→')+Math.abs(dv)+'%</span>';}
+
+  var html='<div class="card" style="margin-bottom:16px;border-top:3px solid '+col+'">'
+    +'<div style="text-align:center;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border)">'
+    +'<div style="font-size:14px;font-weight:800;color:'+col+'">'+titleEn+'</div>'
+    +'<div class="ar" style="font-size:13px;font-weight:800;margin-top:3px">'+titleAr2+'</div>'
+    +(stageSt.cohort?'<div style="margin-top:6px"><span style="background:#fce4ec;color:#c2185b;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:800">Cohort Requested <span class="ar">مطلوب تتبع الدفعة</span></span></div>':'')
+    +'</div>'
+    +'<div style="overflow-x:auto"><table class="tbl" style="border:2px solid '+col+'">'
+    +'<tr><th style="text-align:left;background:#1a2e5a">Level</th>'
+    +'<th style="text-align:center;background:#1565b0">Start<br><span style="font-size:9px;font-weight:400">'+(YEARS.find(function(y){return y.id===yf;})||{}).label+' '+tls[tf]+'</span></th>'
+    +'<th style="text-align:center;background:#6a1b9a">Waypoint<br><span style="font-size:9px;font-weight:400">'+(YEARS.find(function(y){return y.id===ym;})||{}).label+' '+tls[tm]+'</span></th>'
+    +'<th style="text-align:center;background:#1b5e20">End<br><span style="font-size:9px;font-weight:400">'+(yt?yt.label:'')+' '+tls[te]+'</span></th>'
+    +'<th style="text-align:center;background:#374151">Δ Change</th></tr>'
+    +'<tr class="above-row"><td><strong>'+levelLbl('ab').en+'</strong></td><td style="text-align:center">'+valCell(dF)+'</td><td style="text-align:center">'+valCell(dM)+'</td><td style="text-align:center">'+valCell(dT)+'</td><td style="text-align:center">'+deltaTxt+'</td></tr>'
+    +'<tr class="inline-row"><td><strong>'+levelLbl('il').en+'</strong></td><td style="text-align:center">'+valOf(dF,'il')+'</td><td style="text-align:center">'+valOf(dM,'il')+'</td><td style="text-align:center">'+valOf(dT,'il')+'</td><td></td></tr>'
+    +'<tr class="below-row"><td><strong>'+levelLbl('bl').en+'</strong></td><td style="text-align:center">'+valOf(dF,'bl')+'</td><td style="text-align:center">'+valOf(dM,'bl')+'</td><td style="text-align:center">'+valOf(dT,'bl')+'</td><td></td></tr>'
+    +'<tr><td><strong>Judgment</strong></td><td style="text-align:center">'+jCellSt(dF)+'</td><td style="text-align:center">'+jCellSt(dM)+'</td><td style="text-align:center">'+jCellSt(dT)+'</td><td></td></tr>'
+    +'</table></div>';
+  if(dF||dM||dT)html+='<div class="cwrap"><canvas id="ch-stagereport" height="130"></canvas></div>';
+  html+='</div>';
+  el('srResult').innerHTML=html;
+
+  setTimeout(function(){
+    var cv=el('ch-stagereport');if(!cv)return;
+    var tlsFull={t1:'T1',t2:'T2',t3:'T3'};
+    var labels=[],dataAb=[],dataIl=[],dataBl=[];
+    if(dF){labels.push('Start نقطة البدء '+(YEARS.find(function(y){return y.id===yf;})||{}).label+' '+tlsFull[tf]);dataAb.push(dF.ab);dataIl.push(dF.il);dataBl.push(dF.bl);}
+    if(dM){labels.push('Waypoint نقطة المرور '+(YEARS.find(function(y){return y.id===ym;})||{}).label+' '+tlsFull[tm]);dataAb.push(dM.ab);dataIl.push(dM.il);dataBl.push(dM.bl);}
+    if(dT){labels.push('End نقطة الوصول '+(yt?yt.label:'')+' '+tlsFull[te]);dataAb.push(dT.ab);dataIl.push(dT.il);dataBl.push(dT.bl);}
+    if(!labels.length)return;
+    var ds=[
+      {label:levelLbl('ab').en+' / '+levelLbl('ab').ar,data:dataAb,backgroundColor:'rgba(45,125,70,.65)',borderColor:'#2d7d46',borderWidth:2,borderRadius:4},
+      {label:levelLbl('il').en+' / '+levelLbl('il').ar,data:dataIl,backgroundColor:'rgba(21,101,176,.65)',borderColor:'#1565b0',borderWidth:2,borderRadius:4},
+      {label:levelLbl('bl').en+' / '+levelLbl('bl').ar,data:dataBl,backgroundColor:'rgba(183,28,28,.65)',borderColor:'#b71c1c',borderWidth:2,borderRadius:4}
+    ];
+    new Chart(cv.getContext('2d'),{type:'bar',data:{labels:labels,datasets:ds},
+      options:{responsive:true,plugins:{legend:{labels:{font:{family:'Montserrat',weight:'600'}}},tooltip:{callbacks:{label:function(ctx){return ctx.dataset.label.split(' / ')[0]+' '+ctx.parsed.y+'%.';}}},datalabels:{anchor:'end',align:'top',font:{weight:'700',size:9},formatter:function(v,ctx){return ctx.dataset.label.split(' / ')[0]+': '+v+'%';},color:'#1e293b'}},
+        scales:{y:{beginAtZero:true,max:115,ticks:{callback:function(v){return v+'%';}}}}}});
+  },100);
+}
+
+// ═══════════════════════════════════════════════
+// FULL COHORT PAGE — تقرير نفس المجموعة
+// ═══════════════════════════════════════════════
+function pgFullCohort(){
+  var isAtt=section==='att';var col=isAtt?'var(--att)':'var(--prog)';
+  var sOpts='';SUBJECTS.forEach(function(s){sOpts+='<option value="'+s.id+'">'+s.en+'</option>';});
+  var yOpts='';YEARS.forEach(function(y){yOpts+='<option value="'+y.id+'">'+y.label+'</option>';});
+  var tOpts='<option value="t1">Term 1</option><option value="t2">Term 2</option><option value="t3">Term 3</option>';
+  var gOpts='';
+  GRADES.filter(function(g){return g.g!=='KG';}).forEach(function(g){
+    gOpts+='<option value="'+g.id+'">'+g.en+'</option>';
+  });
+  return mkbc([{t:isAtt?'Attainment':'Progress',fn:'_goSection(\''+section+'\')'}])
+    +'<div class="pghdr"><div class="pgtitle">'
+    +'<span class="en" style="color:'+col+'">Full Cohort Report</span>'
+    +'<span class="ar" style="font-size:14px;display:block">تقرير نفس المجموعة في السنوات المتتابعة</span></div></div>'
+    +'<div class="card" style="margin-bottom:14px;background:#eff6ff;border:1.5px solid #bfdbfe">'
+    +'<div style="font-size:12px;line-height:1.6"><i class="ti ti-info-circle"></i> Select one or more grades in <strong>End Point</strong>. Years for Start &amp; Waypoint are set automatically.'
+    +'<div class="ar" style="margin-top:4px">اختر صفًا واحدًا أو أكثر في نقطة الوصول. سيتم تحديد السنوات تلقائيًا لنقطة البدء والمرور.</div></div></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px">'
+    +'<div class="card" style="border-top:3px solid #1565b0">'
+    +'<div class="ctitle" style="color:#1565b0"><i class="ti ti-flag"></i> <strong>Start Point</strong> <span class="ar" style="font-size:11px">نقطة البدء</span></div>'
+    +'<div class="field" style="margin-bottom:8px"><label>Subject <span class="ar" style="font-size:10px">المادة</span></label><select id="fc-f-s" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+sOpts+'</select></div>'
+    +'<div class="field" style="margin-bottom:8px"><label>Year <span class="ar" style="font-size:10px">السنة</span></label><select id="fc-f-y" disabled style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:#f1f5f9">'+yOpts+'</select><div style="font-size:10px;color:var(--text2);margin-top:3px"><i class="ti ti-lock" style="font-size:10px"></i> Auto / تلقائي</div></div>'
+    +'<div class="field" style="margin:0"><label>Term <span class="ar" style="font-size:10px">الفصل</span></label><select id="fc-f-t" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+tOpts+'</select></div>'
+    +'</div>'
+    +'<div class="card" style="border-top:3px solid #6a1b9a">'
+    +'<div class="ctitle" style="color:#6a1b9a"><i class="ti ti-route"></i> <strong>Waypoint</strong> <span class="ar" style="font-size:11px">نقطة المرور</span></div>'
+    +'<div class="field" style="margin-bottom:8px"><label>Subject <span class="ar" style="font-size:10px">المادة</span></label><select id="fc-m-s" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+sOpts+'</select></div>'
+    +'<div class="field" style="margin-bottom:8px"><label>Year <span class="ar" style="font-size:10px">السنة</span></label><select id="fc-m-y" disabled style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:#f1f5f9">'+yOpts+'</select><div style="font-size:10px;color:var(--text2);margin-top:3px"><i class="ti ti-lock" style="font-size:10px"></i> Auto / تلقائي</div></div>'
+    +'<div class="field" style="margin:0"><label>Term <span class="ar" style="font-size:10px">الفصل</span></label><select id="fc-m-t" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+tOpts+'</select></div>'
+    +'</div>'
+    +'<div class="card" style="border-top:3px solid #1b5e20">'
+    +'<div class="ctitle" style="color:#1b5e20"><i class="ti ti-flag-check"></i> <strong>End Point</strong> <span class="ar" style="font-size:11px">نقطة الوصول</span></div>'
+    +'<div class="field" style="margin-bottom:8px"><label>Subject <span class="ar" style="font-size:10px">المادة</span></label><select id="fc-e-s" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+sOpts+'</select></div>'
+    +'<div class="field" style="margin-bottom:8px"><label>Year <span class="ar" style="font-size:10px">السنة</span></label><select id="fc-e-y" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px" onchange="fcAutoFillYears()">'+yOpts+'</select></div>'
+    +'<div class="field" style="margin-bottom:8px"><label>Term <span class="ar" style="font-size:10px">الفصل</span></label><select id="fc-e-t" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+tOpts+'</select></div>'
+    +'<div class="field" style="margin:0"><label>Grade(s) — <span style="font-size:10px;color:var(--text2)">Ctrl+Click for multi-select</span><br><span class="ar" style="font-size:10px">الصفوف — اضغط Ctrl للاختيار المتعدد</span></label>'
+    +'<select id="fc-e-g" multiple style="width:100%;padding:6px;border:1.5px solid var(--border);border-radius:8px;min-height:120px;font-family:Montserrat,sans-serif;font-size:12px">'+gOpts+'</select></div>'
+    +'</div></div>'
+    +'<div style="text-align:center;margin-bottom:18px">'
+    +'<button class="btn '+(isAtt?'btn-att':'btn-prog')+'" onclick="runFullCohort()" style="padding:12px 32px;font-size:15px">'
+    +'<i class="ti ti-search"></i> <strong>Run Full Cohort Report</strong> <span class="ar" style="font-size:12px">تشغيل تقرير المجموعة</span></button></div>'
+    +'<div id="fcResult"></div>';
+}
+
+function fcAutoFillYears(){
+  var yeVal=el('fc-e-y').value;
+  var yeIdx=YEARS.findIndex(function(y){return y.id===yeVal;});
+  var fy=el('fc-f-y'),my=el('fc-m-y');
+  if(yeIdx>=2&&fy)fy.value=YEARS[yeIdx-2].id;
+  if(yeIdx>=1&&my)my.value=YEARS[yeIdx-1].id;
+}
+
+function runFullCohort(){
+  var isAtt=section==='att';var col=isAtt?'var(--att)':'var(--prog)';
+  var db=DB();
+  var fs=el('fc-f-s').value,ms=el('fc-m-s').value,es=el('fc-e-s').value;
+  var fy=el('fc-f-y').value,ft=el('fc-f-t').value;
+  var my=el('fc-m-y').value,mt=el('fc-m-t').value;
+  var ey=el('fc-e-y').value,et=el('fc-e-t').value;
+  var selGrades=Array.from(el('fc-e-g').selectedOptions).map(function(o){return o.value;});
+  if(!selGrades.length){notify('Select at least one grade / اختر صفًا واحدًا على الأقل','err');return;}
+  var yeIdx=YEARS.findIndex(function(y){return y.id===ey;});
+  var fyIdx=YEARS.findIndex(function(y){return y.id===fy;});
+  var myIdx=YEARS.findIndex(function(y){return y.id===my;});
+  var diffF=yeIdx-fyIdx,diffM=yeIdx-myIdx;
+  var tls={t1:'T1',t2:'T2',t3:'T3'};
+  var subE=SUBJECTS.find(function(x){return x.id===es;})||ALL_SUBJECTS_40.find(function(x){return x.id===es;});
+  var ytO=YEARS.find(function(y){return y.id===ey;});
+  var repTypeEn=isAtt?'Attainment Report':'Progress Report';
+  var repTypeAr=isAtt?'تقرير التحصيل الدراسي':'تقرير التقدم الدراسي';
+  function filtF(j){
+    if(activeFilt==='male')return{ab:j.abm||0,il:j.ilm||0,bl:j.blm||0};
+    if(activeFilt==='female')return{ab:j.abf||0,il:j.ilf||0,bl:j.blf||0};
+    if(activeFilt==='sod')return{ab:j.absod||0,il:j.ilsod||0,bl:j.blsod||0};
+    if(activeFilt==='emirati')return{ab:j.abem||0,il:j.ilem||0,bl:j.blem||0};
+    return{ab:j.ab||0,il:j.il||0,bl:j.bl||0};
+  }
+  function getD(s,y,t,gid){
+    var d=db[s]&&db[s][y]&&db[s][y][t]&&db[s][y][t][gid];
+    if(!d||!d.saved||d.na)return null;
+    return filtF(d.j);
+  }
+  function noD(){return'<span style="color:#b71c1c;font-weight:700;font-size:11px">No Data</span>';}
+  function vC(d){return d?'<strong>'+d.ab+'%</strong>':noD();}
+  function vO(d,k){return d?d[k]+'%':noD();}
+  function jC(d){if(!d)return'—';var j=getJ(d.ab,d.il,d.bl);return'<span class="jb '+jCls(j)+'">'+jLbl(j)+'</span>';}
+  var html='',chartData=[];
+  var fyO=YEARS.find(function(y){return y.id===fy;})||{label:'',code:''};
+  var myO=YEARS.find(function(y){return y.id===my;})||{label:'',code:''};
+  selGrades.forEach(function(gid){
+    var gE=GRADES.find(function(x){return x.id===gid;});if(!gE)return;
+    var eIdx=GRADES.indexOf(gE);
+    var gM=eIdx-diffM>=0?GRADES[eIdx-diffM]:null;
+    var gF=eIdx-diffF>=0?GRADES[eIdx-diffF]:null;
+    var dE=getD(es,ey,et,gE.id);
+    var dM=gM?getD(ms,my,mt,gM.id):null;
+    var dF=gF?getD(fs,fy,ft,gF.id):null;
+    var delta='-';
+    if(dF&&dE){var dv=dE.ab-dF.ab;delta='<span style="font-weight:800;color:'+(dv>0?'#2d7d46':dv<0?'#b71c1c':'#888')+'">'+(dv>0?'↑':dv<0?'↓':'→')+Math.abs(dv)+'%</span>';}
+    var titleEn='Full Cohort — '+repTypeEn+' / '+(ytO?ytO.code:'')+' / '+tls[et]+' / Subject: '+(subE?subE.en:'')+' / '+gE.en+' / '+filtLbl();
+    var titleAr='تقرير المجموعة الكاملة — '+(ytO?ytO.label:'')+' — '+(subE?subE.ar:'')+' — '+gE.ar;
+    html+='<div class="card" style="margin-bottom:20px;border-top:3px solid '+col+'">'
+      +'<div style="text-align:center;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border)">'
+      +'<div style="font-size:14px;font-weight:800;color:'+col+'">'+titleEn+'</div>'
+      +'<div class="ar" style="font-size:13px;font-weight:800;margin-top:3px">'+repTypeAr+' — '+titleAr+'</div>'
+      +'<div style="margin-top:6px;display:flex;justify-content:center;gap:8px;flex-wrap:wrap">'
+      +(gF?'<span style="background:#e3f2fd;color:#1565b0;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:700">Start: '+gF.en+' — '+fyO.label+' '+tls[ft]+'</span>':'<span style="font-size:11px;color:#94a3b8">Start: N/A</span>')
+      +(gM?'<span style="background:#f3e5f5;color:#6a1b9a;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:700">Way: '+gM.en+' — '+myO.label+' '+tls[mt]+'</span>':'<span style="font-size:11px;color:#94a3b8">Way: N/A</span>')
+      +'<span style="background:#e8f5e9;color:#1b5e20;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:700">End: '+gE.en+' — '+(ytO?ytO.label:'')+' '+tls[et]+'</span>'
+      +'</div></div>'
+      +'<div style="overflow-x:auto"><table class="tbl" style="border:2px solid '+col+'">'
+      +'<tr><th style="text-align:left;background:#1a2e5a">Level</th>'
+      +'<th style="text-align:center;background:#1565b0">Start'+(gF?' — '+gF.en:'')+'<br><span style="font-size:9px;font-weight:400">'+fyO.label+' '+tls[ft]+'</span></th>'
+      +'<th style="text-align:center;background:#6a1b9a">Waypoint'+(gM?' — '+gM.en:'')+'<br><span style="font-size:9px;font-weight:400">'+myO.label+' '+tls[mt]+'</span></th>'
+      +'<th style="text-align:center;background:#1b5e20">End — '+gE.en+'<br><span style="font-size:9px;font-weight:400">'+(ytO?ytO.label:'')+' '+tls[et]+'</span></th>'
+      +'<th style="text-align:center;background:#374151">Δ</th></tr>'
+      +'<tr class="above-row"><td><strong>'+levelLbl('ab').en+'</strong></td><td style="text-align:center">'+vC(dF)+'</td><td style="text-align:center">'+vC(dM)+'</td><td style="text-align:center">'+vC(dE)+'</td><td style="text-align:center">'+delta+'</td></tr>'
+      +'<tr class="inline-row"><td><strong>'+levelLbl('il').en+'</strong></td><td style="text-align:center">'+vO(dF,'il')+'</td><td style="text-align:center">'+vO(dM,'il')+'</td><td style="text-align:center">'+vO(dE,'il')+'</td><td></td></tr>'
+      +'<tr class="below-row"><td><strong>'+levelLbl('bl').en+'</strong></td><td style="text-align:center">'+vO(dF,'bl')+'</td><td style="text-align:center">'+vO(dM,'bl')+'</td><td style="text-align:center">'+vO(dE,'bl')+'</td><td></td></tr>'
+      +'<tr><td><strong>Judgment</strong></td><td style="text-align:center">'+jC(dF)+'</td><td style="text-align:center">'+jC(dM)+'</td><td style="text-align:center">'+jC(dE)+'</td><td></td></tr>'
+      +'</table></div>'
+      +(dF||dM||dE?'<div class="cwrap"><canvas id="ch-fc-'+gE.id+'" height="110"></canvas></div>':'')
+      +'</div>';
+    chartData.push({id:gE.id,gF:gF,gM:gM,gE:gE,dF:dF,dM:dM,dE:dE,fy:fy,my:my,ey:ey,ft:ft,mt:mt,et:et});
+  });
+  el('fcResult').innerHTML=html;
+  setTimeout(function(){
+    chartData.forEach(function(item){
+      var cv=el('ch-fc-'+item.id);if(!cv)return;
+      var labels=[],dataAb=[],dataIl=[],dataBl=[];
+      var fyO2=YEARS.find(function(y){return y.id===item.fy;})||{label:''};
+      var myO2=YEARS.find(function(y){return y.id===item.my;})||{label:''};
+      var eyO2=YEARS.find(function(y){return y.id===item.ey;})||{label:''};
+      if(item.dF&&item.gF){labels.push('Start نقطة البدء '+item.gF.en+' '+fyO2.label);dataAb.push(item.dF.ab);dataIl.push(item.dF.il);dataBl.push(item.dF.bl);}
+      if(item.dM&&item.gM){labels.push('Way نقطة المرور '+item.gM.en+' '+myO2.label);dataAb.push(item.dM.ab);dataIl.push(item.dM.il);dataBl.push(item.dM.bl);}
+      if(item.dE){labels.push('End نقطة الوصول '+item.gE.en+' '+eyO2.label);dataAb.push(item.dE.ab);dataIl.push(item.dE.il);dataBl.push(item.dE.bl);}
+      if(!labels.length)return;
+      new Chart(cv.getContext('2d'),{type:'bar',data:{labels:labels,datasets:[
+        {label:levelLbl('ab').en+' / '+levelLbl('ab').ar,data:dataAb,backgroundColor:'rgba(45,125,70,.65)',borderColor:'#2d7d46',borderWidth:2,borderRadius:4},
+        {label:levelLbl('il').en+' / '+levelLbl('il').ar,data:dataIl,backgroundColor:'rgba(21,101,176,.65)',borderColor:'#1565b0',borderWidth:2,borderRadius:4},
+        {label:levelLbl('bl').en+' / '+levelLbl('bl').ar,data:dataBl,backgroundColor:'rgba(183,28,28,.65)',borderColor:'#b71c1c',borderWidth:2,borderRadius:4}
+      ]},options:{responsive:true,plugins:{legend:{labels:{font:{family:'Montserrat',weight:'600'}}},tooltip:{callbacks:{label:function(ctx){return ctx.dataset.label.split(' / ')[0]+' '+ctx.parsed.y+'%.';}}},datalabels:{anchor:'end',align:'top',font:{weight:'700',size:9},formatter:function(v,ctx){return ctx.dataset.label.split(' / ')[0]+': '+v+'%';},color:'#1e293b'}},scales:{y:{beginAtZero:true,max:115,ticks:{callback:function(v){return v+'%';}}}}}});
+    });
+  },100);
+}
+
 function attachCharts(){
   var db=DB();
   GRADES.forEach(function(g){
@@ -1283,8 +2066,8 @@ function attachCharts(){
     if(!d)return;
     if(charts[g.id])charts[g.id].destroy();
     charts[g.id]=new Chart(cv.getContext('2d'),{type:'bar',
-      data:{labels:['Above','In Line','Below'],datasets:[{label:'%',data:[d.j.ab,d.j.il,d.j.bl],backgroundColor:['#2d7d46','#1565b0','#b71c1c'],borderRadius:5}]},
-      options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,max:100,ticks:{callback:function(v){return v+'%';}}}}}});
+      data:{labels:[levelLbl('ab').en+' / '+levelLbl('ab').ar,levelLbl('il').en+' / '+levelLbl('il').ar,levelLbl('bl').en+' / '+levelLbl('bl').ar],datasets:[{label:'%',data:[d.j.ab,d.j.il,d.j.bl],backgroundColor:['#2d7d46','#1565b0','#b71c1c'],borderRadius:5}]},
+      options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){return ctx.label+' '+ctx.parsed.y+'%.';},title:function(){return'';}}},datalabels:{anchor:'end',align:'top',font:{weight:'700',size:11},formatter:function(v,ctx){return[levelLbl('ab').en,levelLbl('il').en,levelLbl('bl').en][ctx.dataIndex]+': '+v+'%';},color:'#1e293b'}},scales:{y:{beginAtZero:true,max:115,ticks:{callback:function(v){return v+'%';}}}}}});
   });
   var ov=el('ch-overview');
   if(ov&&sel.s&&sel.y&&sel.t){
@@ -1294,9 +2077,9 @@ function attachCharts(){
       if(d&&d.saved){lb.push(g.en);ad.push(d.j.ab);bd.push(d.j.bl);}
     });
     new Chart(ov.getContext('2d'),{type:'bar',data:{labels:lb,datasets:[
-      {label:'Above',data:ad,backgroundColor:'#2d7d46',borderRadius:4},
-      {label:'Below',data:bd,backgroundColor:'#b71c1c',borderRadius:4}]},
-      options:{responsive:true,scales:{y:{beginAtZero:true,max:100,ticks:{callback:function(v){return v+'%';}}}}}});
+      {label:levelLbl('ab').en+' / '+levelLbl('ab').ar,data:ad,backgroundColor:'#2d7d46',borderRadius:4},
+      {label:levelLbl('bl').en+' / '+levelLbl('bl').ar,data:bd,backgroundColor:'#b71c1c',borderRadius:4}]},
+      options:{responsive:true,plugins:{tooltip:{callbacks:{label:function(ctx){return ctx.dataset.label+' '+ctx.parsed.y+'%.';}}},datalabels:{anchor:'end',align:'top',font:{weight:'700',size:9},formatter:function(v,ctx){return ctx.dataset.label.split(' / ')[0]+': '+v+'%';},color:'#1e293b'}},scales:{y:{beginAtZero:true,max:115,ticks:{callback:function(v){return v+'%';}}}}}});
   }
 }
 </script>

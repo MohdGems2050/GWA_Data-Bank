@@ -684,6 +684,16 @@ function dataFiltVals(j,filt){
   if(f==='emirati')return{ab:j.abem||0, il:j.ilem||0, bl:j.blem||0};
   return{ab:j.ab||0,il:j.il||0,bl:j.bl||0};
 }
+// فحص: هل هناك 0 طالب في الفئة المختارة رغم وجود إجمالي طلاب؟ (Total>=1 AND category count=0)
+function checkNoStudents(st,filt){
+  if(!st||!filt||filt==='all')return false;
+  var tot=st.tot||0;
+  if(tot<1)return false; // لا يوجد بيانات أصلاً — حالة مختلفة (No Data)
+  var countMap={male:st.m||0,female:st.f||0,gt:st.gt||0,sod:st.sod||0,emirati:st.em||0};
+  return (countMap[filt]||0)===0;
+}
+var NS_BADGE='<span style="background:#f1f5f9;color:#64748b;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:700">N/A (No Students)</span>';
+var NS_SHORT='<span style="background:#f1f5f9;color:#64748b;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:700">N/A</span>';
 // شريط فلتر الرسوم البيانية المشترك (Attainment/Progress/SDT)
 function dataFilterBar(onChangeFn){
   var items=[
@@ -755,6 +765,14 @@ function refreshGradeChart(gid){
   var d=db[sel.s]&&db[sel.s][sel.y]&&db[sel.s][sel.y][sel.t]&&db[sel.s][sel.y][sel.t][gid];
   if(!d||!charts[gid])return;
   var f=gradeFilt[gid]||'all';
+  var cv=el('ch-'+gid),nsDiv=el('ns-'+gid);
+  if(checkNoStudents(d.st,f)){
+    if(cv)cv.style.display='none';
+    if(nsDiv)nsDiv.style.display='block';
+    return;
+  }
+  if(cv)cv.style.display='block';
+  if(nsDiv)nsDiv.style.display='none';
   var fv=dataFiltVals(d.j,f);
   charts[gid].data.datasets[0].data=[fv.ab,fv.il,fv.bl];
   charts[gid].data.datasets[0].label=FILT_LABELS[f]||'All';
@@ -767,8 +785,16 @@ function refreshSDTChart(uid){
   var d=SDT_DB[sdtSel.s]&&SDT_DB[sdtSel.s][did]&&SDT_DB[sdtSel.s][did][sdtSel.y]&&SDT_DB[sdtSel.s][did][sdtSel.y][sdtSel.t]&&SDT_DB[sdtSel.s][did][sdtSel.y][sdtSel.t][gid];
   if(!d)return;
   var f=sdtFilt[uid]||'all';
+  var cv=el('sdtch-'+uid),nsDiv=el('sdtns-'+uid);
+  if(checkNoStudents(d.st,f)){
+    if(cv)cv.style.display='none';
+    if(nsDiv)nsDiv.style.display='block';
+    return;
+  }
+  if(cv)cv.style.display='block';
+  if(nsDiv)nsDiv.style.display='none';
+  if(!cv||!cv._sdtChart)return;
   var fv=dataFiltVals(d.j,f);
-  var cv=el('sdtch-'+uid);if(!cv||!cv._sdtChart)return;
   cv._sdtChart.data.datasets[0].data=[fv.ab,fv.il,fv.bl];
   cv._sdtChart.data.datasets[0].label=FILT_LABELS[f]||'All';
   cv._sdtChart.update('none');
@@ -1617,7 +1643,9 @@ function gradeCard(g,isAtt,col){
     +'<td></td></tr>';
   h+='</table></div>';
   h+=gradeFilterBar(g.id);
-  h+='<div class="cwrap"><div class="ctitle2">'+g.en+' | '+termEn()+'</div><canvas id="ch-'+g.id+'" height="100"></canvas></div>';
+  h+='<div class="cwrap"><div class="ctitle2">'+g.en+' | '+termEn()+'</div>'
+    +'<div id="ns-'+g.id+'" style="display:none;text-align:center;padding:30px;color:#64748b"><i class="ti ti-users-group" style="font-size:32px"></i><div style="font-weight:800;margin-top:8px">N/A (No Students)</div><div class="ar" style="font-size:12px;margin-top:2px">لا يوجد طلاب</div></div>'
+    +'<canvas id="ch-'+g.id+'" height="100"></canvas></div>';
   h+='<div class="arow" style="background:#f8faff;border-radius:8px;padding:10px;margin-top:10px">'
     +'<button class="btn '+(isAtt?'btn-att':'btn-prog')+'" id="sv-'+g.id+'" data-gid="'+g.id+'" data-gen="'+g.en+'" onclick="saveG(this)"'+(canE?'':' disabled style="opacity:.5;cursor:not-allowed"')+'>'
     +'<i class="ti ti-device-floppy"></i> Save '+g.en+' <span class="ar" style="font-size:10px">حفظ</span></button>'
@@ -2012,14 +2040,20 @@ function runCmp(){
   var html2='';var chartQueue=[];
 
   // استخراج قيم Above/InLine/Below الصحيحة من سجل الحكم حسب الفلتر المُفعّل (All/Male/Female/SoD/Emirati)
-  function filtFields(j){return dataFiltVals(j,activeFilt);}
+  function filtFields(j,st){
+    if(st&&activeFilt!=='all'){
+      var countMap={male:st.m||0,female:st.f||0,gt:st.gt||0,sod:st.sod||0,emirati:st.em||0};
+      if(activeFilt!=='all'&&countMap[activeFilt]===0)return'no_students';
+    }
+    return dataFiltVals(j,activeFilt);
+  }
 
   function getAvg(db2,s,y,t,gradeId){
     if(gradeId==='ALL'){
       var tot={ab:0,il:0,bl:0},n=0;
       GRADES.forEach(function(g){
         var d=db2[s]&&db2[s][y]&&db2[s][y][t]&&db2[s][y][t][g.id];
-        if(d&&d.saved&&!d.na){var fv=filtFields(d.j);tot.ab+=fv.ab;tot.il+=fv.il;tot.bl+=fv.bl;n++;}
+        if(d&&d.saved&&!d.na){var fv=filtFields(d.j,d.st);if(fv==='no_students')return;tot.ab+=fv.ab;tot.il+=fv.il;tot.bl+=fv.bl;n++;}
       });
       if(!n)return null;
       return{ab:Math.round(tot.ab/n),il:Math.round(tot.il/n),bl:Math.round(tot.bl/n)};
@@ -2027,7 +2061,9 @@ function runCmp(){
     var d2=db2[s]&&db2[s][y]&&db2[s][y][t]&&db2[s][y][t][gradeId];
     if(!d2||!d2.saved)return null;
     if(d2.na)return'NA';
-    return filtFields(d2.j);
+    var fv2=filtFields(d2.j,d2.st);
+    if(fv2==='no_students')return'no_students';
+    return fv2;
   }
 
   var gradesToShow=sfG==='ALL'?GRADES:GRADES.filter(function(g){return g.id===sfG;});
@@ -2037,18 +2073,20 @@ function runCmp(){
     var noData='<span style="color:#b71c1c;font-weight:700;font-size:11px">No Data Saved</span>';
     var naBadge='<span style="color:#6b7280;font-weight:700;font-size:11px"><i class="ti ti-ban"></i> N/A</span>';
     function isNA(d){return d==='NA';}
-    function valCell(d){return isNA(d)?naBadge:(d?'<strong>'+d.ab+'%</strong>':noData);}
+    function isNS(d){return d==='no_students';}
+    var nsBadge='<span style="background:#f1f5f9;color:#64748b;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:700">No Students / لا يوجد طلاب</span>';
+    function valCell(d){return isNA(d)?naBadge:isNS(d)?NS_SHORT:(d?'<strong>'+d.ab+'%</strong>':noData);}
     function deltaCell(dA,dB){
-      if(isNA(dA)||isNA(dB))return naBadge;
+      if(isNA(dA)||isNA(dB)||isNS(dA)||isNS(dB))return isNS(dA)||isNS(dB)?nsBadge:naBadge;
       if(!dA||!dB)return'-';
       var dv=dB.ab-dA.ab;
       return'<span style="font-weight:800;color:'+(dv>0?'#2d7d46':dv<0?'#b71c1c':'#888')+'">'+(dv>0?'↑':dv<0?'↓':'→')+Math.abs(dv)+'%</span>';
     }
-    function jCell(d){if(isNA(d))return naBadge;if(!d)return'—';var j=getJ(d.ab,d.il,d.bl);return'<span class="jb '+jCls(j)+'">'+jLbl(j)+'</span>';}
+    function jCell(d){if(isNA(d))return naBadge;if(isNS(d))return nsBadge;if(!d)return'—';var j=getJ(d.ab,d.il,d.bl);return'<span class="jb '+jCls(j)+'">'+jLbl(j)+'</span>';}
     var ymO=YEARS.find(function(x){return x.id===ym;})||yfO;
     var midTh=midOn?'<th style="text-align:center;background:#6a1b9a">Waypoint<br><span style="font-size:9px;font-weight:400">'+ymO.label+' '+tls[tm]+'</span></th>':'';
     var totalD=(dF&&dT&&!isNA(dF)&&!isNA(dT))?deltaCell(dF,dT):((midOn&&dM&&dT&&!isNA(dM)&&!isNA(dT))?deltaCell(dM,dT):(isNA(dF)||isNA(dT)?naBadge:'-'));
-    function valOf(d,key){return(d&&!isNA(d))?d[key]+'%':(isNA(d)?naBadge:noData);}
+    function valOf(d,key){if(isNS(d))return NS_SHORT;return(d&&!isNA(d))?d[key]+'%':(isNA(d)?naBadge:noData);}
     var repTypeEn=isAtt?'Attainment Report Comparison':'Progress Report Comparison';
     var repTypeAr=isAtt?'تقرير مقارنات التحصيل الدراسي':'تقرير مقارنات التقدم الدراسي';
     var tls2e={t1:'Term 1',t2:'Term 2',t3:'Term 3'};
@@ -2073,9 +2111,9 @@ function runCmp(){
       +'<tr class="below-row"><td><strong>'+levelLbl('bl').en+'</strong></td><td style="text-align:center">'+valOf(dF,'bl')+'</td>'+(midOn?'<td style="text-align:center">'+valOf(dM,'bl')+'</td>':'')+'<td style="text-align:center">'+valOf(dT,'bl')+'</td><td></td></tr>'
       +'<tr><td><strong>Judgment</strong></td><td style="text-align:center">'+jCell(dF)+'</td>'+(midOn?'<td style="text-align:center">'+jCell(dM)+'</td>':'')+'<td style="text-align:center">'+jCell(dT)+'</td><td></td></tr>'
       +'</table></div>';
-    if((dF&&!isNA(dF))||(dM&&!isNA(dM))||(dT&&!isNA(dT))){
+    if((dF&&!isNA(dF)&&!isNS(dF))||(dM&&!isNA(dM)&&!isNS(dM))||(dT&&!isNA(dT)&&!isNS(dT))){
       html2+='<div class="cwrap"><canvas id="ch-cmp-'+g.id+'" height="130"></canvas></div>';
-      chartQueue.push({id:g.id,dF:isNA(dF)?null:dF,dM:isNA(dM)?null:dM,dT:isNA(dT)?null:dT,yfO:yfO,ymO:(YEARS.find(function(x){return x.id===ym;})||yfO),ytO:ytO,tf:tf,tm:tm,tt:tt});
+      chartQueue.push({id:g.id,dF:(isNA(dF)||isNS(dF))?null:dF,dM:(isNA(dM)||isNS(dM))?null:dM,dT:(isNA(dT)||isNS(dT))?null:dT,yfO:yfO,ymO:(YEARS.find(function(x){return x.id===ym;})||yfO),ytO:ytO,tf:tf,tm:tm,tt:tt});
     }
     html2+=reportActionBar();
     html2+='</div>';
@@ -2141,16 +2179,45 @@ function pgStageReport(){
   return mkbc([{t:isAtt?'Attainment':'Progress',fn:'_goSection(\''+section+'\')'},{t:title}])
     +'<div class="pgtitle" style="margin-bottom:14px"><span style="font-size:20px;font-weight:800;color:'+col+'">'+title+'</span><span class="ar" style="display:block;font-size:14px;font-weight:800;margin-top:2px">'+titleAr+'</span></div>'
     +'<div class="card" style="margin-bottom:14px;background:#eff6ff;border:1.5px solid #bfdbfe">'
-    +'<div style="font-size:12px;line-height:1.6"><i class="ti ti-info-circle"></i> Choose a stage from <strong>Start Point</strong> — it will lock the same stage in Waypoint &amp; End Point. Subject stays the same across all three.'
-    +'<div class="ar" style="margin-top:4px">اختر المرحلة من نقطة البدء — سيتم قفل نفس المرحلة في نقطة المرور والوصول. تبقى المادة ثابتة في الثلاث نقاط.</div></div></div>'
-    +'<div id="srGrid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px">'
-    +pt('f','Start Point','نقطة البدء',0,true)+pt('m','Waypoint','نقطة المرور',1,false)+pt('e','End Point','نقطة الوصول',2,false)+'</div>'
+    +'<div style="font-size:12px;line-height:1.6"><i class="ti ti-info-circle"></i> Choose a stage from <strong>Start Point</strong> — it will lock the same stage in Waypoint &amp; End Point.'
+    +'<div class="ar" style="margin-top:4px">اختر المرحلة من نقطة البدء — سيتم قفل نفس المرحلة في نقطة المرور والوصول.</div></div></div>'
+    +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;background:var(--bg);padding:10px;border-radius:8px">'
+    +'<label class="twrap"><input type="checkbox" id="srWaypointTog" onchange="togSrWaypoint()"><span class="tslider"></span></label>'
+    +'<span style="font-weight:800">Enable Waypoint <span class="ar" style="font-size:12px">تفعيل نقطة المرور</span></span></div>'
+    +'<div id="srGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">'
+    +pt('f','Start Point','نقطة البدء',0,true)+pt('e','End Point','نقطة الوصول',2,false)+'</div>'
     +'<div style="text-align:center;margin-bottom:18px">'
     +'<button class="btn '+(isAtt?'btn-att':'btn-prog')+'" onclick="runStageReport()" style="padding:12px 32px;font-size:15px">'
     +'<i class="ti ti-search"></i> <strong>Run Stage Report</strong> <span class="ar" style="font-size:12px">تشغيل تقرير المراحل</span></button></div>'
     +'<div id="srResult"></div>';
 }
 
+function togSrWaypoint(){
+  var on=el('srWaypointTog')&&el('srWaypointTog').checked;
+  var grid=el('srGrid');if(!grid)return;
+  var isAtt=section==='att';var col=isAtt?'var(--att)':'var(--prog)';
+  var yOpts='';YEARS.forEach(function(y){yOpts+='<option value="'+y.id+'">'+y.label+'</option>';});
+  var tOpts='<option value="t1">Term 1</option><option value="t2">Term 2</option><option value="t3">Term 3</option>';
+  var sOpts='';SUBJECTS.forEach(function(s){sOpts+='<option value="'+s.id+'">'+s.en+'</option>';});
+  if(on){
+    grid.style.gridTemplateColumns='1fr 1fr 1fr';
+    var stageLabel=stageSt.stage?STAGES[stageSt.stage].label:'— Start Point first —';
+    var midCard='<div id="srMidCard" class="card" style="border-top:3px solid #6a1b9a">'
+      +'<div class="ctitle" style="color:#6a1b9a"><i class="ti ti-route"></i> <span style="font-weight:800">Waypoint</span> <span class="ar" style="font-size:11px">نقطة المرور</span></div>'
+      +'<div class="field" style="margin-bottom:8px"><label>Subject</label><select id="sr-m-s" disabled style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:#f1f5f9">'+sOpts+'</select></div>'
+      +'<div class="field" style="margin-bottom:8px"><label>Year</label><select id="sr-m-y" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+yOpts+'</select></div>'
+      +'<div class="field" style="margin-bottom:8px"><label>Term</label><select id="sr-m-t" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+tOpts+'</select></div>'
+      +'<div class="field" style="margin:0"><label>Stage</label><div style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:#f1f5f9;color:var(--text2);font-size:13px">'+stageLabel+'</div></div>'
+      +'</div>';
+    var cards=grid.querySelectorAll('.card');
+    if(cards.length>=1)cards[0].insertAdjacentHTML('afterend',midCard);
+    // sync subject
+    var fs=el('sr-f-s');var ms=el('sr-m-s');if(fs&&ms)ms.value=fs.value;
+  }else{
+    grid.style.gridTemplateColumns='1fr 1fr';
+    var mid=el('srMidCard');if(mid)mid.remove();
+  }
+}
 function syncStageSubject(v){
   ['m','e'].forEach(function(p){var s=el('sr-'+p+'-s');if(s)s.value=v;});
 }
@@ -2195,6 +2262,9 @@ function runStageReport(){
   var ye=el('sr-e-y').value, te=el('sr-e-t').value;
   var ym=el('sr-m-y')?el('sr-m-y').value:yf, tm=el('sr-m-t')?el('sr-m-t').value:tf;
 
+  var midOnSr=!!(el('srWaypointTog')&&el('srWaypointTog').checked);
+  // إذا Waypoint مش مفعّل، اقرأ من Start Point للـ m
+  if(!midOnSr){ym=yf;tm=tf;sm=sf;}
   var gradesF,gradesM,gradesE;
   gradesE=stageGrades(stageSt.stage);
 
@@ -2216,12 +2286,18 @@ function runStageReport(){
     gradesM=stageGrades(stageSt.stage);
   }
 
-  function filtFieldsSt(j){return dataFiltVals(j,activeFilt);}
+  function filtFieldsSt(j,st){
+    if(st&&activeFilt!=='all'){
+      var countMap={male:st.m||0,female:st.f||0,gt:st.gt||0,sod:st.sod||0,emirati:st.em||0};
+      if(countMap[activeFilt]===0)return'no_students';
+    }
+    return dataFiltVals(j,activeFilt);
+  }
   function avgFor(s,y,t,gradesList){
     var tot={ab:0,il:0,bl:0},n=0;
     gradesList.forEach(function(g){
       var d=db[s]&&db[s][y]&&db[s][y][t]&&db[s][y][t][g.id];
-      if(d&&d.saved&&!d.na){var fv=filtFieldsSt(d.j);tot.ab+=fv.ab;tot.il+=fv.il;tot.bl+=fv.bl;n++;}
+      if(d&&d.saved&&!d.na){var fv=filtFieldsSt(d.j,d.st);if(fv==='no_students')return;tot.ab+=fv.ab;tot.il+=fv.il;tot.bl+=fv.bl;n++;}
     });
     if(!n)return null;
     return{ab:Math.round(tot.ab/n),il:Math.round(tot.il/n),bl:Math.round(tot.bl/n)};
@@ -2242,13 +2318,15 @@ function runStageReport(){
   var titleEn=stg.label+' — '+repTypeEn+' / '+(yt?yrCode(yt):'')+'_ '+tls[te]+'_Subject: '+(sub?sub.en:'');
   var titleAr2='تقرير مقارنات '+(isAtt?'التحصيل الدراسي':'التقدم الدراسي')+' – للعام الأكاديمي '+(yt?yt.label:'')+' – المرحلة '+stg.ar+' – '+tlsAr[te];
 
+  var nsB='<span style="background:#f1f5f9;color:#64748b;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:700">No Students / لا يوجد طلاب</span>';
   function noDataOr(d){return d?'':'<span style="color:#b71c1c;font-weight:700;font-size:11px">No Data Saved</span>';}
-  function valCell(d){return d?'<strong>'+d.ab+'%</strong>':noDataOr(d);}
-  function valOf(d,key){return d?d[key]+'%':noDataOr(d);}
-  function jCellSt(d){if(!d)return'—';var j=getJ(d.ab,d.il,d.bl);return'<span class="jb '+jCls(j)+'">'+jLbl(j)+'</span>';}
+  function valCell(d){if(d==='no_students')return NS_SHORT;return d?'<strong>'+d.ab+'%</strong>':noDataOr(d);}
+  function valOf(d,key){if(d==='no_students')return NS_SHORT;return d?d[key]+'%':noDataOr(d);}
+  function jCellSt(d){if(d==='no_students')return nsB;if(!d)return'—';var j=getJ(d.ab,d.il,d.bl);return'<span class="jb '+jCls(j)+'">'+jLbl(j)+'</span>';}
   var deltaTxt='-';
   if(dF&&dT){var dv=dT.ab-dF.ab;deltaTxt='<span style="font-weight:800;color:'+(dv>0?'#2d7d46':dv<0?'#b71c1c':'#888')+'">'+(dv>0?'↑':dv<0?'↓':'→')+Math.abs(dv)+'%</span>';}
 
+  var wayTh=midOnSr?'<th style="text-align:center;background:#6a1b9a">Waypoint<br><span style="font-size:9px;font-weight:400">'+(YEARS.find(function(y){return y.id===ym;})||{}).label+' '+tls[tm]+'</span></th>':'';
   var html='<div class="card" style="margin-bottom:16px;border-top:3px solid '+col+'">'
     +'<div style="text-align:center;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border)">'
     +'<div style="font-size:14px;font-weight:800;color:'+col+'">'+titleEn+'</div>'
@@ -2258,15 +2336,15 @@ function runStageReport(){
     +'<div style="overflow-x:auto"><table class="tbl" style="border:2px solid '+col+'">'
     +'<tr><th style="text-align:left;background:#1a2e5a">Level</th>'
     +'<th style="text-align:center;background:#1565b0">Start<br><span style="font-size:9px;font-weight:400">'+(YEARS.find(function(y){return y.id===yf;})||{}).label+' '+tls[tf]+'</span></th>'
-    +'<th style="text-align:center;background:#6a1b9a">Waypoint<br><span style="font-size:9px;font-weight:400">'+(YEARS.find(function(y){return y.id===ym;})||{}).label+' '+tls[tm]+'</span></th>'
+    +wayTh
     +'<th style="text-align:center;background:#1b5e20">End<br><span style="font-size:9px;font-weight:400">'+(yt?yt.label:'')+' '+tls[te]+'</span></th>'
     +'<th style="text-align:center;background:#374151">Δ Change</th></tr>'
-    +'<tr class="above-row"><td><strong>'+levelLbl('ab').en+'</strong></td><td style="text-align:center">'+valCell(dF)+'</td><td style="text-align:center">'+valCell(dM)+'</td><td style="text-align:center">'+valCell(dT)+'</td><td style="text-align:center">'+deltaTxt+'</td></tr>'
-    +'<tr class="inline-row"><td><strong>'+levelLbl('il').en+'</strong></td><td style="text-align:center">'+valOf(dF,'il')+'</td><td style="text-align:center">'+valOf(dM,'il')+'</td><td style="text-align:center">'+valOf(dT,'il')+'</td><td></td></tr>'
-    +'<tr class="below-row"><td><strong>'+levelLbl('bl').en+'</strong></td><td style="text-align:center">'+valOf(dF,'bl')+'</td><td style="text-align:center">'+valOf(dM,'bl')+'</td><td style="text-align:center">'+valOf(dT,'bl')+'</td><td></td></tr>'
-    +'<tr><td><strong>Judgment</strong></td><td style="text-align:center">'+jCellSt(dF)+'</td><td style="text-align:center">'+jCellSt(dM)+'</td><td style="text-align:center">'+jCellSt(dT)+'</td><td></td></tr>'
+    +'<tr class="above-row"><td><strong>'+levelLbl('ab').en+'</strong></td><td style="text-align:center">'+valCell(dF)+'</td>'+(midOnSr?'<td style="text-align:center">'+valCell(dM)+'</td>':'')+'<td style="text-align:center">'+valCell(dT)+'</td><td style="text-align:center">'+deltaTxt+'</td></tr>'
+    +'<tr class="inline-row"><td><strong>'+levelLbl('il').en+'</strong></td><td style="text-align:center">'+valOf(dF,'il')+'</td>'+(midOnSr?'<td style="text-align:center">'+valOf(dM,'il')+'</td>':'')+'<td style="text-align:center">'+valOf(dT,'il')+'</td><td></td></tr>'
+    +'<tr class="below-row"><td><strong>'+levelLbl('bl').en+'</strong></td><td style="text-align:center">'+valOf(dF,'bl')+'</td>'+(midOnSr?'<td style="text-align:center">'+valOf(dM,'bl')+'</td>':'')+'<td style="text-align:center">'+valOf(dT,'bl')+'</td><td></td></tr>'
+    +'<tr><td><strong>Judgment</strong></td><td style="text-align:center">'+jCellSt(dF)+'</td>'+(midOnSr?'<td style="text-align:center">'+jCellSt(dM)+'</td>':'')+'<td style="text-align:center">'+jCellSt(dT)+'</td><td></td></tr>'
     +'</table></div>';
-  if(dF||dM||dT)html+='<div class="cwrap"><canvas id="ch-stagereport" height="130"></canvas></div>';
+  if((dF&&dF!=='no_students')||(dM&&dM!=='no_students')||(dT&&dT!=='no_students'))html+='<div class="cwrap"><canvas id="ch-stagereport" height="130"></canvas></div>';
   html+='</div>';
   html+=reportActionBar();
   el('srResult').innerHTML=html;
@@ -2275,9 +2353,9 @@ function runStageReport(){
     var cv=el('ch-stagereport');if(!cv)return;
     var tlsFull={t1:'T1',t2:'T2',t3:'T3'};
     var labels=[],dataAb=[],dataIl=[],dataBl=[];
-    if(dF){labels.push('Start نقطة البدء '+(YEARS.find(function(y){return y.id===yf;})||{}).label+' '+tlsFull[tf]);dataAb.push(dF.ab);dataIl.push(dF.il);dataBl.push(dF.bl);}
-    if(dM){labels.push('Waypoint نقطة المرور '+(YEARS.find(function(y){return y.id===ym;})||{}).label+' '+tlsFull[tm]);dataAb.push(dM.ab);dataIl.push(dM.il);dataBl.push(dM.bl);}
-    if(dT){labels.push('End نقطة الوصول '+(yt?yt.label:'')+' '+tlsFull[te]);dataAb.push(dT.ab);dataIl.push(dT.il);dataBl.push(dT.bl);}
+    if(dF&&dF!=='no_students'){labels.push('Start نقطة البدء '+(YEARS.find(function(y){return y.id===yf;})||{}).label+' '+tlsFull[tf]);dataAb.push(dF.ab);dataIl.push(dF.il);dataBl.push(dF.bl);}
+    if(dM&&dM!=='no_students'){labels.push('Waypoint نقطة المرور '+(YEARS.find(function(y){return y.id===ym;})||{}).label+' '+tlsFull[tm]);dataAb.push(dM.ab);dataIl.push(dM.il);dataBl.push(dM.bl);}
+    if(dT&&dT!=='no_students'){labels.push('End نقطة الوصول '+(yt?yt.label:'')+' '+tlsFull[te]);dataAb.push(dT.ab);dataIl.push(dT.il);dataBl.push(dT.bl);}
     if(!labels.length)return;
     var ds=[
       {label:levelLbl('ab').en+' / '+levelLbl('ab').ar,data:dataAb,backgroundColor:'rgba(45,125,70,.65)',borderColor:'#2d7d46',borderWidth:2,borderRadius:4},
@@ -2362,16 +2440,23 @@ function runFullCohort(){
   var ytO=YEARS.find(function(y){return y.id===ey;});
   var repTypeEn=isAtt?'Attainment Report':'Progress Report';
   var repTypeAr=isAtt?'تقرير التحصيل الدراسي':'تقرير التقدم الدراسي';
-  function filtF(j){return dataFiltVals(j,activeFilt);}
+  function filtF(j,st){
+    if(st&&activeFilt!=='all'){
+      var cm={male:st.m||0,female:st.f||0,gt:st.gt||0,sod:st.sod||0,emirati:st.em||0};
+      if(cm[activeFilt]===0)return'no_students';
+    }
+    return dataFiltVals(j,activeFilt);
+  }
   function getD(s,y,t,gid){
     var d=db[s]&&db[s][y]&&db[s][y][t]&&db[s][y][t][gid];
     if(!d||!d.saved||d.na)return null;
-    return filtF(d.j);
+    return filtF(d.j,d.st);
   }
+  var nsFC='<span style="background:#f1f5f9;color:#64748b;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:700">No Students / لا يوجد طلاب</span>';
   function noD(){return'<span style="color:#b71c1c;font-weight:700;font-size:11px">No Data</span>';}
-  function vC(d){return d?'<strong>'+d.ab+'%</strong>':noD();}
-  function vO(d,k){return d?d[k]+'%':noD();}
-  function jC(d){if(!d)return'—';var j=getJ(d.ab,d.il,d.bl);return'<span class="jb '+jCls(j)+'">'+jLbl(j)+'</span>';}
+  function vC(d){if(d==='no_students')return NS_SHORT;return d?'<strong>'+d.ab+'%</strong>':noD();}
+  function vO(d,k){if(d==='no_students')return NS_SHORT;return d?d[k]+'%':noD();}
+  function jC(d){if(d==='no_students')return nsFC;if(!d)return'—';var j=getJ(d.ab,d.il,d.bl);return'<span class="jb '+jCls(j)+'">'+jLbl(j)+'</span>';}
   var html='',chartData=[];
   var fyO=YEARS.find(function(y){return y.id===fy;})||{label:'',code:''};
   var myO=YEARS.find(function(y){return y.id===my;})||{label:'',code:''};
@@ -2384,7 +2469,7 @@ function runFullCohort(){
     var dM=gM?getD(ms,my,mt,gM.id):null;
     var dF=gF?getD(fs,fy,ft,gF.id):null;
     var delta='-';
-    if(dF&&dE){var dv=dE.ab-dF.ab;delta='<span style="font-weight:800;color:'+(dv>0?'#2d7d46':dv<0?'#b71c1c':'#888')+'">'+(dv>0?'↑':dv<0?'↓':'→')+Math.abs(dv)+'%</span>';}
+    if(dF&&dF!=='no_students'&&dE&&dE!=='no_students'){var dv=dE.ab-dF.ab;delta='<span style="font-weight:800;color:'+(dv>0?'#2d7d46':dv<0?'#b71c1c':'#888')+'">'+(dv>0?'↑':dv<0?'↓':'→')+Math.abs(dv)+'%</span>';}
     var titleEn='Full Cohort — '+repTypeEn+' / '+(ytO?yrCode(ytO):'')+' / '+tls[et]+' / Subject: '+(subE?subE.en:'')+' / '+gE.en+' / '+filtLbl();
     var titleAr='تقرير المجموعة الكاملة — '+(ytO?ytO.label:'')+' — '+(subE?subE.ar:'')+' — '+gE.ar;
     html+='<div class="card" style="margin-bottom:20px;border-top:3px solid '+col+'">'
@@ -2407,7 +2492,7 @@ function runFullCohort(){
       +'<tr class="below-row"><td><strong>'+levelLbl('bl').en+'</strong></td><td style="text-align:center">'+vO(dF,'bl')+'</td><td style="text-align:center">'+vO(dM,'bl')+'</td><td style="text-align:center">'+vO(dE,'bl')+'</td><td></td></tr>'
       +'<tr><td><strong>Judgment</strong></td><td style="text-align:center">'+jC(dF)+'</td><td style="text-align:center">'+jC(dM)+'</td><td style="text-align:center">'+jC(dE)+'</td><td></td></tr>'
       +'</table></div>'
-      +(dF||dM||dE?'<div class="cwrap"><canvas id="ch-fc-'+gE.id+'" height="110"></canvas></div>':'')
+      +((dF&&dF!=='no_students')||(dM&&dM!=='no_students')||(dE&&dE!=='no_students')?'<div class="cwrap"><canvas id="ch-fc-'+gE.id+'" height="110"></canvas></div>':'')
       +'</div>';
     chartData.push({id:gE.id,gF:gF,gM:gM,gE:gE,dF:dF,dM:dM,dE:dE,fy:fy,my:my,ey:ey,ft:ft,mt:mt,et:et});
   });
@@ -2419,9 +2504,9 @@ function runFullCohort(){
       var fyO2=YEARS.find(function(y){return y.id===item.fy;})||{label:''};
       var myO2=YEARS.find(function(y){return y.id===item.my;})||{label:''};
       var eyO2=YEARS.find(function(y){return y.id===item.ey;})||{label:''};
-      if(item.dF&&item.gF){labels.push('Start نقطة البدء '+item.gF.en+' '+fyO2.label);dataAb.push(item.dF.ab);dataIl.push(item.dF.il);dataBl.push(item.dF.bl);}
-      if(item.dM&&item.gM){labels.push('Way نقطة المرور '+item.gM.en+' '+myO2.label);dataAb.push(item.dM.ab);dataIl.push(item.dM.il);dataBl.push(item.dM.bl);}
-      if(item.dE){labels.push('End نقطة الوصول '+item.gE.en+' '+eyO2.label);dataAb.push(item.dE.ab);dataIl.push(item.dE.il);dataBl.push(item.dE.bl);}
+      if(item.dF&&item.dF!=='no_students'&&item.gF){labels.push('Start نقطة البدء '+item.gF.en+' '+fyO2.label);dataAb.push(item.dF.ab);dataIl.push(item.dF.il);dataBl.push(item.dF.bl);}
+      if(item.dM&&item.dM!=='no_students'&&item.gM){labels.push('Way نقطة المرور '+item.gM.en+' '+myO2.label);dataAb.push(item.dM.ab);dataIl.push(item.dM.il);dataBl.push(item.dM.bl);}
+      if(item.dE&&item.dE!=='no_students'){labels.push('End نقطة الوصول '+item.gE.en+' '+eyO2.label);dataAb.push(item.dE.ab);dataIl.push(item.dE.il);dataBl.push(item.dE.bl);}
       if(!labels.length)return;
       new Chart(cv.getContext('2d'),{type:'bar',data:{labels:labels,datasets:[
         {label:levelLbl('ab').en+' / '+levelLbl('ab').ar,data:dataAb,backgroundColor:'rgba(45,125,70,.65)',borderColor:'#2d7d46',borderWidth:2,borderRadius:4},
@@ -2846,6 +2931,7 @@ function sdtDomainGradeCard(g,dom,di,sub,yr,trmLbl){
   sdtFiltBar+='</div>';
   h+=sdtFiltBar;
   h+='<div class="cwrap"><div class="ctitle2">'+g.en+' | Domain '+(di+1)+': '+dom.en+' | '+(yr?yrCode(yr):'')+' | '+(trmLbl)+'</div>'
+    +'<div id="sdtns-'+uid+'" style="display:none;text-align:center;padding:30px;color:#64748b"><i class="ti ti-users-group" style="font-size:32px"></i><div style="font-weight:800;margin-top:8px">N/A (No Students)</div><div class="ar" style="font-size:12px;margin-top:2px">لا يوجد طلاب</div></div>'
     +'<canvas id="sdtch-'+uid+'" height="100"></canvas></div>';
   // ─── Action Buttons ───
   h+='<div class="arow" style="background:#fffbeb;border-radius:8px;padding:10px;margin-top:10px">'
@@ -3067,10 +3153,12 @@ function runSDTCompare(){
   function sdtAvg(y,t,g,domId){
     if(!y)return null;
     if(g==='ALL'){var tot={ab:0,il:0,bl:0},n=0;
-      GRADES.forEach(function(gr){var d=SDT_DB[sid]&&SDT_DB[sid][domId]&&SDT_DB[sid][domId][y]&&SDT_DB[sid][domId][y][t]&&SDT_DB[sid][domId][y][t][gr.id];if(d&&d.saved&&!d.na){tot.ab+=d.j.ab;tot.il+=d.j.il;tot.bl+=d.j.bl;n++;}});
+      GRADES.forEach(function(gr){var d=SDT_DB[sid]&&SDT_DB[sid][domId]&&SDT_DB[sid][domId][y]&&SDT_DB[sid][domId][y][t]&&SDT_DB[sid][domId][y][t][gr.id];if(d&&d.saved&&!d.na){if(checkNoStudents(d.st,activeFilt))return;tot.ab+=d.j.ab;tot.il+=d.j.il;tot.bl+=d.j.bl;n++;}});
       if(!n)return null;return{ab:Math.round(tot.ab/n),il:Math.round(tot.il/n),bl:Math.round(tot.bl/n)};}
     var d=SDT_DB[sid]&&SDT_DB[sid][domId]&&SDT_DB[sid][domId][y]&&SDT_DB[sid][domId][y][t]&&SDT_DB[sid][domId][y][t][g];
-    if(!d||!d.saved||d.na)return null;return{ab:d.j.ab,il:d.j.il,bl:d.j.bl};
+    if(!d||!d.saved||d.na)return null;
+    if(checkNoStudents(d.st,activeFilt))return'no_students';
+    return{ab:d.j.ab,il:d.j.il,bl:d.j.bl};
   }
   function grLbl(gid){if(gid==='ALL')return'All Grades';var g2=GRADES.find(function(x){return x.id===gid;});return g2?g2.en:gid;}
   doms.forEach(function(dom,di){
@@ -3078,11 +3166,11 @@ function runSDTCompare(){
     var dM=midOn?sdtAvg(ym,tm,gm,dom.id):null;
     var dT=sdtAvg(yt,tt,gt,dom.id);
     var noD='<span style="color:#b71c1c;font-size:11px;font-weight:700">No Data</span>';
-    function vC(d){return d?'<strong>'+d.ab+'%</strong>':noD;}
-    function vO(d,k){return d?d[k]+'%':noD;}
-    function jC(d){if(!d)return'—';var j=getJ(d.ab,d.il,d.bl);return'<span class="jb '+jCls(j)+'">'+jLbl(j)+'</span>';}
+    function vC(d){if(d==='no_students')return NS_SHORT;return d?'<strong>'+d.ab+'%</strong>':noD;}
+    function vO(d,k){if(d==='no_students')return NS_SHORT;return d?d[k]+'%':noD;}
+    function jC(d){if(d==='no_students')return NS_BADGE;if(!d)return'—';var j=getJ(d.ab,d.il,d.bl);return'<span class="jb '+jCls(j)+'">'+jLbl(j)+'</span>';}
     var delta='-';
-    if(dF&&dT){var dv=dT.ab-dF.ab;delta='<span style="font-weight:800;color:'+(dv>0?'#2d7d46':dv<0?'#b71c1c':'#888')+'">'+(dv>0?'↑':dv<0?'↓':'→')+Math.abs(dv)+'%</span>';}
+    if(dF&&dF!=='no_students'&&dT&&dT!=='no_students'){var dv=dT.ab-dF.ab;delta='<span style="font-weight:800;color:'+(dv>0?'#2d7d46':dv<0?'#b71c1c':'#888')+'">'+(dv>0?'↑':dv<0?'↓':'→')+Math.abs(dv)+'%</span>';}
     var midTh=midOn?'<th style="text-align:center;background:#6a1b9a">Waypoint<br><span style="font-size:9px;font-weight:400">'+ymO.label+' '+tls[tm]+' | '+grLbl(gm)+'</span></th>':'';
     var repTitle='SDT Over Time — '+sub.en+' | '+(ytO.label||'')+' '+tls2[tt]+' | '+grLbl(gt)+' | Domain '+(di+1)+': '+dom.en;
     var repTitleAr=sub.ar+' | '+dom.ar+' | '+(ytO.label||'')+' '+tls2[tt];
@@ -3101,7 +3189,7 @@ function runSDTCompare(){
       +'<tr class="below-row"><td><strong>'+levelLbl('bl').en+'</strong></td><td style="text-align:center">'+vO(dF,'bl')+'</td>'+(midOn?'<td style="text-align:center">'+vO(dM,'bl')+'</td>':'')+'<td style="text-align:center">'+vO(dT,'bl')+'</td><td></td></tr>'
       +'<tr><td><strong>Judgment</strong></td><td style="text-align:center">'+jC(dF)+'</td>'+(midOn?'<td style="text-align:center">'+jC(dM)+'</td>':'')+'<td style="text-align:center">'+jC(dT)+'</td><td></td></tr>'
       +'</table></div>'
-      +(dF||dM||dT?'<div class="cwrap"><canvas id="sdtCmpCh-'+di+'" height="110"></canvas></div>':'')
+      +((dF&&dF!=='no_students')||(dM&&dM!=='no_students')||(dT&&dT!=='no_students')?'<div class="cwrap"><canvas id="sdtCmpCh-'+di+'" height="110"></canvas></div>':'')
       +reportActionBar()+'</div>';
   });
   el('sdtCmpResult').innerHTML=html||'<div class="card" style="text-align:center;padding:24px;color:var(--text2)">No domain data found / لا توجد بيانات</div>';
@@ -3110,9 +3198,9 @@ function runSDTCompare(){
       var cv=el('sdtCmpCh-'+di);if(!cv)return;
       var dF=sdtAvg(yf,tf,gf,dom.id),dM=midOn?sdtAvg(ym,tm,gm,dom.id):null,dT=sdtAvg(yt,tt,gt,dom.id);
       var labs=[],ab=[],il=[],bl=[];
-      if(dF){labs.push('Start نقطة البدء '+yfO.label+' '+tls[tf]);ab.push(dF.ab);il.push(dF.il);bl.push(dF.bl);}
-      if(midOn&&dM){labs.push('Waypoint نقطة المرور '+ymO.label+' '+tls[tm]);ab.push(dM.ab);il.push(dM.il);bl.push(dM.bl);}
-      if(dT){labs.push('End نقطة الوصول '+ytO.label+' '+tls[tt]);ab.push(dT.ab);il.push(dT.il);bl.push(dT.bl);}
+      if(dF&&dF!=='no_students'){labs.push('Start نقطة البدء '+yfO.label+' '+tls[tf]);ab.push(dF.ab);il.push(dF.il);bl.push(dF.bl);}
+      if(midOn&&dM&&dM!=='no_students'){labs.push('Waypoint نقطة المرور '+ymO.label+' '+tls[tm]);ab.push(dM.ab);il.push(dM.il);bl.push(dM.bl);}
+      if(dT&&dT!=='no_students'){labs.push('End نقطة الوصول '+ytO.label+' '+tls[tt]);ab.push(dT.ab);il.push(dT.il);bl.push(dT.bl);}
       if(!labs.length)return;
       new Chart(cv.getContext('2d'),{type:'bar',data:{labels:labs,datasets:[
         {label:levelLbl('ab').en+' / '+levelLbl('ab').ar,data:ab,backgroundColor:'rgba(45,125,70,.65)',borderColor:'#2d7d46',borderWidth:2,borderRadius:4},
@@ -3177,14 +3265,14 @@ function runSDTStage(){
   var tls={t1:'T1',t2:'T2',t3:'T3'};
   var html='';
   doms.forEach(function(dom,di){
-    function avgStage(y,t){var tot={ab:0,il:0,bl:0},n=0;gradeList.forEach(function(g){var d=SDT_DB[sid]&&SDT_DB[sid][dom.id]&&SDT_DB[sid][dom.id][y]&&SDT_DB[sid][dom.id][y][t]&&SDT_DB[sid][dom.id][y][t][g.id];if(d&&d.saved&&!d.na){tot.ab+=d.j.ab;tot.il+=d.j.il;tot.bl+=d.j.bl;n++;}});if(!n)return null;return{ab:Math.round(tot.ab/n),il:Math.round(tot.il/n),bl:Math.round(tot.bl/n)};}
+    function avgStage(y,t){var tot={ab:0,il:0,bl:0},n=0;gradeList.forEach(function(g){var d=SDT_DB[sid]&&SDT_DB[sid][dom.id]&&SDT_DB[sid][dom.id][y]&&SDT_DB[sid][dom.id][y][t]&&SDT_DB[sid][dom.id][y][t][g.id];if(d&&d.saved&&!d.na){if(checkNoStudents(d.st,activeFilt))return;tot.ab+=d.j.ab;tot.il+=d.j.il;tot.bl+=d.j.bl;n++;}});if(!n)return null;return{ab:Math.round(tot.ab/n),il:Math.round(tot.il/n),bl:Math.round(tot.bl/n)};}
     var dF=avgStage(yf,tf),dM=avgStage(ym,tm),dE=avgStage(ye,te);
     var yfO=YEARS.find(function(y){return y.id===yf;})||{label:''},ymO=YEARS.find(function(y){return y.id===ym;})||{label:''},yeO=YEARS.find(function(y){return y.id===ye;})||{label:''};
     var noD='<span style="color:#b71c1c;font-size:11px;font-weight:700">No Data</span>';
-    function vC(d){return d?'<strong>'+d.ab+'%</strong>':noD;}
-    function vO(d,k){return d?d[k]+'%':noD;}
-    function jC(d){if(!d)return'—';var j=getJ(d.ab,d.il,d.bl);return'<span class="jb '+jCls(j)+'">'+jLbl(j)+'</span>';}
-    var delta='-';if(dF&&dE){var dv=dE.ab-dF.ab;delta='<span style="font-weight:800;color:'+(dv>0?'#2d7d46':dv<0?'#b71c1c':'#888')+'">'+(dv>0?'↑':dv<0?'↓':'→')+Math.abs(dv)+'%</span>';}
+    function vC(d){if(d==='no_students')return NS_SHORT;return d?'<strong>'+d.ab+'%</strong>':noD;}
+    function vO(d,k){if(d==='no_students')return NS_SHORT;return d?d[k]+'%':noD;}
+    function jC(d){if(d==='no_students')return NS_BADGE;if(!d)return'—';var j=getJ(d.ab,d.il,d.bl);return'<span class="jb '+jCls(j)+'">'+jLbl(j)+'</span>';}
+    var delta='-';if(dF&&dF!=='no_students'&&dE&&dE!=='no_students'){var dv=dE.ab-dF.ab;delta='<span style="font-weight:800;color:'+(dv>0?'#2d7d46':dv<0?'#b71c1c':'#888')+'">'+(dv>0?'↑':dv<0?'↓':'→')+Math.abs(dv)+'%</span>';}
     html+='<div class="card" style="border-top:4px solid '+SDT_COL+';margin-bottom:16px">'
       +'<div style="text-align:center;padding-bottom:10px;border-bottom:1px solid var(--border);margin-bottom:10px">'
       +'<div style="font-size:13px;font-weight:800;color:'+SDT_COL+'">SDT Stage Report — '+sub.en+' | '+STAGES[stageKey].label+' | Domain '+(di+1)+': '+dom.en+'</div>'
@@ -3200,20 +3288,20 @@ function runSDTStage(){
       +'<tr class="below-row"><td><strong>'+levelLbl('bl').en+'</strong></td><td style="text-align:center">'+vO(dF,'bl')+'</td><td style="text-align:center">'+vO(dM,'bl')+'</td><td style="text-align:center">'+vO(dE,'bl')+'</td><td></td></tr>'
       +'<tr><td><strong>Judgment</strong></td><td style="text-align:center">'+jC(dF)+'</td><td style="text-align:center">'+jC(dM)+'</td><td style="text-align:center">'+jC(dE)+'</td><td></td></tr>'
       +'</table></div>'
-      +(dF||dM||dE?'<div class="cwrap"><canvas id="sdtStCh-'+di+'" height="110"></canvas></div>':'')
+      +((dF&&dF!=='no_students')||(dM&&dM!=='no_students')||(dE&&dE!=='no_students')?'<div class="cwrap"><canvas id="sdtStCh-'+di+'" height="110"></canvas></div>':'')
       +reportActionBar()+'</div>';
   });
   el('sdtStResult').innerHTML=html||'<div class="card" style="text-align:center;padding:24px;color:var(--text2)">No data found</div>';
   setTimeout(function(){
     doms.forEach(function(dom,di){
       var cv=el('sdtStCh-'+di);if(!cv)return;
-      function avg2(y,t){var tot={ab:0,il:0,bl:0},n=0;gradeList.forEach(function(g){var d=SDT_DB[sid]&&SDT_DB[sid][dom.id]&&SDT_DB[sid][dom.id][y]&&SDT_DB[sid][dom.id][y][t]&&SDT_DB[sid][dom.id][y][t][g.id];if(d&&d.saved&&!d.na){tot.ab+=d.j.ab;tot.il+=d.j.il;tot.bl+=d.j.bl;n++;}});if(!n)return null;return{ab:Math.round(tot.ab/n),il:Math.round(tot.il/n),bl:Math.round(tot.bl/n)};}
+      function avg2(y,t){var tot={ab:0,il:0,bl:0},n=0;gradeList.forEach(function(g){var d=SDT_DB[sid]&&SDT_DB[sid][dom.id]&&SDT_DB[sid][dom.id][y]&&SDT_DB[sid][dom.id][y][t]&&SDT_DB[sid][dom.id][y][t][g.id];if(d&&d.saved&&!d.na){if(checkNoStudents(d.st,activeFilt))return;tot.ab+=d.j.ab;tot.il+=d.j.il;tot.bl+=d.j.bl;n++;}});if(!n)return null;return{ab:Math.round(tot.ab/n),il:Math.round(tot.il/n),bl:Math.round(tot.bl/n)};}
       var dF=avg2(yf,tf),dM=avg2(ym,tm),dE=avg2(ye,te);
       var yfO=YEARS.find(function(y){return y.id===yf;})||{label:''},ymO=YEARS.find(function(y){return y.id===ym;})||{label:''},yeO=YEARS.find(function(y){return y.id===ye;})||{label:''};
       var tls={t1:'T1',t2:'T2',t3:'T3'};var labs=[],ab=[],il=[],bl=[];
-      if(dF){labs.push('Start '+yfO.label);ab.push(dF.ab);il.push(dF.il);bl.push(dF.bl);}
-      if(dM){labs.push('Waypoint '+ymO.label);ab.push(dM.ab);il.push(dM.il);bl.push(dM.bl);}
-      if(dE){labs.push('End '+yeO.label);ab.push(dE.ab);il.push(dE.il);bl.push(dE.bl);}
+      if(dF&&dF!=='no_students'){labs.push('Start '+yfO.label);ab.push(dF.ab);il.push(dF.il);bl.push(dF.bl);}
+      if(dM&&dM!=='no_students'){labs.push('Waypoint '+ymO.label);ab.push(dM.ab);il.push(dM.il);bl.push(dM.bl);}
+      if(dE&&dE!=='no_students'){labs.push('End '+yeO.label);ab.push(dE.ab);il.push(dE.il);bl.push(dE.bl);}
       if(!labs.length)return;
       new Chart(cv.getContext('2d'),{type:'bar',data:{labels:labs,datasets:[{label:levelLbl('ab').en,data:ab,backgroundColor:'rgba(45,125,70,.65)',borderColor:'#2d7d46',borderWidth:2,borderRadius:4},{label:levelLbl('il').en,data:il,backgroundColor:'rgba(21,101,176,.65)',borderColor:'#1565b0',borderWidth:2,borderRadius:4},{label:levelLbl('bl').en,data:bl,backgroundColor:'rgba(183,28,28,.65)',borderColor:'#b71c1c',borderWidth:2,borderRadius:4}]},options:{responsive:true,plugins:{legend:{labels:{font:{family:'Montserrat',weight:'600'}}},datalabels:{anchor:'end',align:'top',font:{weight:'700',size:9},formatter:function(v,ctx){return ctx.dataset.label+': '+v+'%';},color:'#1e293b'}},scales:{y:{beginAtZero:true,max:115,ticks:{callback:function(v){return v+'%';}}}}}});
     });
@@ -3291,15 +3379,15 @@ function runSDTCohort(){
     var gF=eIdx2-diffF>=0?GRADES[eIdx2-diffF]:null;
     var fyO=YEARS.find(function(y){return y.id===fy;})||{label:''},myO=YEARS.find(function(y){return y.id===my;})||{label:''},eyO=YEARS.find(function(y){return y.id===ey;})||{label:''};
     doms.forEach(function(dom,di){
-      function getD2(s,y,t,g){var d=SDT_DB[sid]&&SDT_DB[sid][dom.id]&&SDT_DB[sid][dom.id][y]&&SDT_DB[sid][dom.id][y][t]&&SDT_DB[sid][dom.id][y][t][g];if(!d||!d.saved||d.na)return null;return{ab:d.j.ab,il:d.j.il,bl:d.j.bl};}
+      function getD2(s,y,t,g){var d=SDT_DB[sid]&&SDT_DB[sid][dom.id]&&SDT_DB[sid][dom.id][y]&&SDT_DB[sid][dom.id][y][t]&&SDT_DB[sid][dom.id][y][t][g];if(!d||!d.saved||d.na)return null;if(checkNoStudents(d.st,activeFilt))return'no_students';return{ab:d.j.ab,il:d.j.il,bl:d.j.bl};}
       var dF=gF?getD2(sid,fy,ft,gF.id):null;
       var dM=gM?getD2(sid,my,mt,gM.id):null;
       var dE=getD2(sid,ey,et,gE.id);
       var noD='<span style="color:#b71c1c;font-size:11px;font-weight:700">No Data</span>';
-      function vC(d){return d?'<strong>'+d.ab+'%</strong>':noD;}
-      function vO(d,k){return d?d[k]+'%':noD;}
-      function jC(d){if(!d)return'—';var j=getJ(d.ab,d.il,d.bl);return'<span class="jb '+jCls(j)+'">'+jLbl(j)+'</span>';}
-      var delta='-';if(dF&&dE){var dv=dE.ab-dF.ab;delta='<span style="font-weight:800;color:'+(dv>0?'#2d7d46':dv<0?'#b71c1c':'#888')+'">'+(dv>0?'↑':dv<0?'↓':'→')+Math.abs(dv)+'%</span>';}
+      function vC(d){if(d==='no_students')return NS_SHORT;return d?'<strong>'+d.ab+'%</strong>':noD;}
+      function vO(d,k){if(d==='no_students')return NS_SHORT;return d?d[k]+'%':noD;}
+      function jC(d){if(d==='no_students')return NS_BADGE;if(!d)return'—';var j=getJ(d.ab,d.il,d.bl);return'<span class="jb '+jCls(j)+'">'+jLbl(j)+'</span>';}
+      var delta='-';if(dF&&dF!=='no_students'&&dE&&dE!=='no_students'){var dv=dE.ab-dF.ab;delta='<span style="font-weight:800;color:'+(dv>0?'#2d7d46':dv<0?'#b71c1c':'#888')+'">'+(dv>0?'↑':dv<0?'↓':'→')+Math.abs(dv)+'%</span>';}
       var cid='sdtfc-'+gE.id+'-'+di;
       html+='<div class="card" style="border-top:4px solid '+SDT_COL+';margin-bottom:16px">'
         +'<div style="text-align:center;padding-bottom:10px;border-bottom:1px solid var(--border);margin-bottom:10px">'
@@ -3320,7 +3408,7 @@ function runSDTCohort(){
         +'<tr class="below-row"><td><strong>'+levelLbl('bl').en+'</strong></td><td style="text-align:center">'+vO(dF,'bl')+'</td><td style="text-align:center">'+vO(dM,'bl')+'</td><td style="text-align:center">'+vO(dE,'bl')+'</td><td></td></tr>'
         +'<tr><td><strong>Judgment</strong></td><td style="text-align:center">'+jC(dF)+'</td><td style="text-align:center">'+jC(dM)+'</td><td style="text-align:center">'+jC(dE)+'</td><td></td></tr>'
         +'</table></div>'
-        +(dF||dM||dE?'<div class="cwrap"><canvas id="'+cid+'" height="100"></canvas></div>':'')
+        +((dF&&dF!=='no_students')||(dM&&dM!=='no_students')||(dE&&dE!=='no_students')?'<div class="cwrap"><canvas id="'+cid+'" height="100"></canvas></div>':'')
         +reportActionBar()+'</div>';
     });
   });
@@ -3335,12 +3423,12 @@ function runSDTCohort(){
       var tls={t1:'T1',t2:'T2',t3:'T3'};
       doms.forEach(function(dom,di){
         var cv=el('sdtfc-'+gE.id+'-'+di);if(!cv)return;
-        function getD3(y,t,g){var d=SDT_DB[sid]&&SDT_DB[sid][dom.id]&&SDT_DB[sid][dom.id][y]&&SDT_DB[sid][dom.id][y][t]&&SDT_DB[sid][dom.id][y][t][g];if(!d||!d.saved||d.na)return null;return{ab:d.j.ab,il:d.j.il,bl:d.j.bl};}
+        function getD3(y,t,g){var d=SDT_DB[sid]&&SDT_DB[sid][dom.id]&&SDT_DB[sid][dom.id][y]&&SDT_DB[sid][dom.id][y][t]&&SDT_DB[sid][dom.id][y][t][g];if(!d||!d.saved||d.na)return null;if(checkNoStudents(d.st,activeFilt))return'no_students';return{ab:d.j.ab,il:d.j.il,bl:d.j.bl};}
         var dF=gF?getD3(fy,ft,gF.id):null,dM=gM?getD3(my,mt,gM.id):null,dE=getD3(ey,et,gE.id);
         var labs=[],ab=[],il=[],bl=[];
-        if(dF&&gF){labs.push('Start '+gF.en+' '+fyO.label);ab.push(dF.ab);il.push(dF.il);bl.push(dF.bl);}
-        if(dM&&gM){labs.push('Way '+gM.en+' '+myO.label);ab.push(dM.ab);il.push(dM.il);bl.push(dM.bl);}
-        if(dE){labs.push('End '+gE.en+' '+eyO.label);ab.push(dE.ab);il.push(dE.il);bl.push(dE.bl);}
+        if(dF&&dF!=='no_students'&&gF){labs.push('Start '+gF.en+' '+fyO.label);ab.push(dF.ab);il.push(dF.il);bl.push(dF.bl);}
+        if(dM&&dM!=='no_students'&&gM){labs.push('Way '+gM.en+' '+myO.label);ab.push(dM.ab);il.push(dM.il);bl.push(dM.bl);}
+        if(dE&&dE!=='no_students'){labs.push('End '+gE.en+' '+eyO.label);ab.push(dE.ab);il.push(dE.il);bl.push(dE.bl);}
         if(!labs.length)return;
         new Chart(cv.getContext('2d'),{type:'bar',data:{labels:labs,datasets:[{label:levelLbl('ab').en,data:ab,backgroundColor:'rgba(45,125,70,.65)',borderColor:'#2d7d46',borderWidth:2,borderRadius:4},{label:levelLbl('il').en,data:il,backgroundColor:'rgba(21,101,176,.65)',borderColor:'#1565b0',borderWidth:2,borderRadius:4},{label:levelLbl('bl').en,data:bl,backgroundColor:'rgba(183,28,28,.65)',borderColor:'#b71c1c',borderWidth:2,borderRadius:4}]},options:{responsive:true,plugins:{legend:{labels:{font:{family:'Montserrat',weight:'600'}}},datalabels:{anchor:'end',align:'top',font:{weight:'700',size:9},formatter:function(v,ctx){return ctx.dataset.label+': '+v+'%';},color:'#1e293b'}},scales:{y:{beginAtZero:true,max:115,ticks:{callback:function(v){return v+'%';}}}}}});
       });

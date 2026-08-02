@@ -1506,6 +1506,37 @@ function getJ(a,il,b){
 }
 function jCls(j){return'j-'+j;}
 function jLbl(j){return{weak:'Weak ضعيف',acceptable:'Acceptable مقبول',good:'Good جيد',verygood:'Very Good جيد جداً',outstanding:'Outstanding ممتاز',na:'—'}[j]||'—';}
+// ترتيب رقمي لمقياس الحكم لحساب فرق الحكم (Δ Judgment)
+var J_SCALE={weak:1,acceptable:2,good:3,verygood:4,outstanding:5,na:0};
+function jDelta(jFrom,jTo){
+  var a=J_SCALE[jFrom]||0, b=J_SCALE[jTo]||0;
+  if(a===0||b===0)return'';
+  var diff=b-a;
+  if(diff===0)return'<span style="font-weight:800;color:#888">→ 0</span>';
+  var arrow=diff>0?'↑':'↓';
+  var color=diff>0?'#2d7d46':'#b71c1c';
+  var sign=diff>0?'+':'';
+  return'<span style="font-weight:800;color:'+color+'">'+arrow+' '+sign+diff+'</span>';
+}
+// دالة عامة لحساب Δ Change بين آخر نقطتين موجودتين فعلياً (من بين Start/Waypoint/End)
+// points = [{key:'ab'|'il'|'bl', val:val}, ...] بترتيب Start->Waypoint->End، القيمة null إذا مفقودة
+function deltaLastTwo(points){
+  // points: array من الأرقام أو null، بالترتيب الزمني (Start, [Waypoint], End)
+  var valid=points.filter(function(p){return p!==null&&p!==undefined&&p!=='no_students'&&p!=='NA';});
+  if(valid.length<2)return'-';
+  var a=valid[valid.length-2], b=valid[valid.length-1];
+  var dv=b-a;
+  if(dv===0)return'<span style="font-weight:800;color:#888">→ 0%</span>';
+  var arrow=dv>0?'↑':'↓';
+  var color=dv>0?'#2d7d46':'#b71c1c';
+  return'<span style="font-weight:800;color:'+color+'">'+arrow+' '+Math.abs(dv)+'%</span>';
+}
+// نفس الفكرة لكن لحساب Δ Judgment (فرق رقمي بمستويات الحكم)
+function deltaLastTwoJudgment(judgments){
+  var valid=judgments.filter(function(j){return j&&j!=='na'&&j!=='no_students';});
+  if(valid.length<2)return'-';
+  return jDelta(valid[valid.length-2], valid[valid.length-1]);
+}
 // تسميات الفئات الثلاث (Above/Met Expectation/Below) حسب القسم — Attainment أو Progress
 function levelLbl(key){
   if(section==='prog'){
@@ -1525,6 +1556,71 @@ function levelLbl(key){
 // ═══════════════════════════════════════════════
 // DATA PAGE
 // ═══════════════════════════════════════════════
+// ─── مؤشر الإكمال: حالة كل صف (Completed/In Progress/Not Completed) ───
+// شرطان للاكتمال: (1) Total>=1  (2) كل عمود له طلاب فعليين (count>0) يجب أن تكون بيانات حكمه مُدخلة
+function gradeCompletionStatus(g){
+  var db=DB();
+  var d=db[sel.s]&&db[sel.s][sel.y]&&db[sel.s][sel.y][sel.t]&&db[sel.s][sel.y][sel.t][g.id];
+  if(!d)return'not_completed';
+  if(d.na===true)return'completed'; // N/A = قرار مكتمل بالنسبة للمشرف
+  if(!d.saved)return'not_completed';
+  if(!d.st||!d.st.tot||d.st.tot<1)return'not_completed'; // شرط 1: Total>=1
+  var st=d.st, j=d.j;
+  // شرط 2: كل عمود له عدد طلاب>0 يجب أن يكون فيه بيانات حكم (il+bl غير صفريين معاً)
+  var cols=[
+    {cnt:st.tot,   il:j.il,   bl:j.bl},
+    {cnt:st.m,     il:j.ilm,  bl:j.blm},
+    {cnt:st.f,     il:j.ilf,  bl:j.blf},
+    {cnt:st.gt,    il:j.ilgt, bl:j.blgt},
+    {cnt:st.sod,   il:j.ilsod,bl:j.blsod},
+    {cnt:st.em,    il:j.ilem, bl:j.blem}
+  ];
+  for(var i=0;i<cols.length;i++){
+    if((cols[i].cnt||0)>0 && (cols[i].il||0)===0 && (cols[i].bl||0)===0)return'not_completed';
+  }
+  return'completed';
+}
+function completionIndicator(){
+  var isAtt=section==='att';var col=isAtt?'var(--att)':'var(--prog)';
+  var statusMeta={
+    completed:{bg:'#dcfce7',border:'#16a34a',text:'#166534',en:'Completed',ar:'مكتمل'},
+    not_completed:{bg:'#f1f5f9',border:'#cbd5e1',text:'#64748b',en:'Not Completed',ar:'غير مكتمل'}
+  };
+  var counts={completed:0,not_completed:0};
+  var cells='';
+  GRADES.forEach(function(g){
+    var st=gradeCompletionStatus(g);
+    counts[st]++;
+    var m=statusMeta[st];
+    cells+='<div style="background:'+m.bg+';border:1.5px solid '+m.border+';border-radius:8px;padding:8px 6px;text-align:center;cursor:pointer" onclick="jumpToGrade(\''+g.id+'\')">'
+      +'<div style="font-size:11px;font-weight:800;color:'+m.text+'">'+g.en+'</div>'
+      +'<div style="font-size:9px;color:'+m.text+';margin-top:3px;font-weight:700">'+m.en+'</div>'
+      +'<div class="ar" style="font-size:9px;color:'+m.text+';font-weight:700">'+m.ar+'</div>'
+      +'</div>';
+  });
+  var h='<div class="card" style="margin-bottom:16px;padding:14px" id="completionIndicatorCard">'
+    +'<div class="ctitle" style="color:'+col+';margin-bottom:10px"><i class="ti ti-checklist"></i> Completion Status <span class="ar" style="font-size:12px">مؤشر الإكمال</span>'
+    +'<span style="margin-left:auto;display:flex;gap:8px;font-size:11px;font-weight:700">'
+    +'<span style="color:#166534"><i class="ti ti-circle-filled" style="font-size:9px"></i> '+counts.completed+' Completed</span>'
+    +'<span style="color:#64748b"><i class="ti ti-circle-filled" style="font-size:9px"></i> '+counts.not_completed+' Not Completed</span>'
+    +'</span></div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px" id="completionGrid">'+cells+'</div>'
+    +'</div>';
+  return h;
+}
+// الضغط على حالة الصف ينقل مباشرة لبطاقة هذا الصف
+function jumpToGrade(gid){
+  var card=el('gc-'+gid);
+  if(card)card.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function refreshCompletionIndicator(){
+  var card=el('completionIndicatorCard');
+  if(!card)return;
+  var tmp=document.createElement('div');
+  tmp.innerHTML=completionIndicator();
+  var newCard=tmp.firstChild;
+  card.parentNode.replaceChild(newCard,card);
+}
 function pgData(){
   var sub=SUBJECTS.find(function(x){return x.id===sel.s;});
   var yr=YEARS.find(function(x){return x.id===sel.y;});
@@ -1537,6 +1633,7 @@ function pgData(){
     +'<span class="en" style="color:'+col+'">'+secLabel+' — '+sub.en+'</span>'
     +'<span class="ar" style="color:'+col+'">'+sub.ar+'</span></div>'
     +'<button class="btn btn-o btn-sm" onclick="pickYearBC()"><i class="ti ti-arrow-left"></i> <strong>Back</strong></button></div>';
+  h+=completionIndicator();
   ['KG','PYP','MYP','DP'].forEach(function(grp){
     var list=GRADES.filter(function(g){return g.g===grp;});
     h+='<div style="padding:8px 13px;background:'+col+';border-radius:10px;font-size:13px;margin-bottom:8px;display:flex;align-items:center;gap:10px">'
@@ -1813,6 +1910,7 @@ async function saveG(btn){
     if(cv&&charts[gid]){charts[gid].data.datasets[0].data=[ab,il,bl];charts[gid].update();}
     notify('✅ Saved to Firebase: '+gen,'ok');
     logActivity(gid,gen);
+    refreshCompletionIndicator();
   } catch(e){
     notify('❌ Error saving: '+e.message,'err');
   }
@@ -2085,8 +2183,15 @@ function runCmp(){
     function jCell(d){if(isNA(d))return naBadge;if(isNS(d))return nsBadge;if(!d)return'—';var j=getJ(d.ab,d.il,d.bl);return'<span class="jb '+jCls(j)+'">'+jLbl(j)+'</span>';}
     var ymO=YEARS.find(function(x){return x.id===ym;})||yfO;
     var midTh=midOn?'<th style="text-align:center;background:#6a1b9a">Waypoint<br><span style="font-size:9px;font-weight:400">'+ymO.label+' '+tls[tm]+'</span></th>':'';
-    var totalD=(dF&&dT&&!isNA(dF)&&!isNA(dT))?deltaCell(dF,dT):((midOn&&dM&&dT&&!isNA(dM)&&!isNA(dT))?deltaCell(dM,dT):(isNA(dF)||isNA(dT)?naBadge:'-'));
     function valOf(d,key){if(isNS(d))return NS_SHORT;return(d&&!isNA(d))?d[key]+'%':(isNA(d)?naBadge:noData);}
+    // ─── Δ Change لكل صف (Above/Met/Below) ولـ Judgment ─── يقارن آخر نقطتين فيهم بيانات فعلية
+    function getV(d,key){if(!d||d==='NA'||d==='no_students')return null;return d[key];}
+    function getVJ(d){if(!d||d==='NA'||d==='no_students')return null;return getJ(d.ab,d.il,d.bl);}
+    var ptsAb=[getV(dF,'ab')];if(midOn)ptsAb.push(getV(dM,'ab'));ptsAb.push(getV(dT,'ab'));
+    var ptsIl=[getV(dF,'il')];if(midOn)ptsIl.push(getV(dM,'il'));ptsIl.push(getV(dT,'il'));
+    var ptsBl=[getV(dF,'bl')];if(midOn)ptsBl.push(getV(dM,'bl'));ptsBl.push(getV(dT,'bl'));
+    var ptsJ=[getVJ(dF)];if(midOn)ptsJ.push(getVJ(dM));ptsJ.push(getVJ(dT));
+    var deltaAb=deltaLastTwo(ptsAb), deltaIl=deltaLastTwo(ptsIl), deltaBl=deltaLastTwo(ptsBl), deltaJ=deltaLastTwoJudgment(ptsJ);
     var repTypeEn=isAtt?'Attainment Report Comparison':'Progress Report Comparison';
     var repTypeAr=isAtt?'تقرير مقارنات التحصيل الدراسي':'تقرير مقارنات التقدم الدراسي';
     var tls2e={t1:'Term 1',t2:'Term 2',t3:'Term 3'};
@@ -2106,10 +2211,10 @@ function runCmp(){
       +midTh
       +'<th style="text-align:center;background:#1b5e20">End<br><span style="font-size:9px;font-weight:400">'+ytO.label+' '+tls[tt]+'</span></th>'
       +'<th style="text-align:center;background:#374151">Δ Change</th></tr>'
-      +'<tr class="above-row"><td><strong>'+levelLbl('ab').en+'</strong></td><td style="text-align:center">'+valCell(dF)+'</td>'+(midOn?'<td style="text-align:center">'+valCell(dM)+'</td>':'')+'<td style="text-align:center">'+valCell(dT)+'</td><td style="text-align:center">'+totalD+'</td></tr>'
-      +'<tr class="inline-row"><td><strong>'+levelLbl('il').en+'</strong></td><td style="text-align:center">'+valOf(dF,'il')+'</td>'+(midOn?'<td style="text-align:center">'+valOf(dM,'il')+'</td>':'')+'<td style="text-align:center">'+valOf(dT,'il')+'</td><td></td></tr>'
-      +'<tr class="below-row"><td><strong>'+levelLbl('bl').en+'</strong></td><td style="text-align:center">'+valOf(dF,'bl')+'</td>'+(midOn?'<td style="text-align:center">'+valOf(dM,'bl')+'</td>':'')+'<td style="text-align:center">'+valOf(dT,'bl')+'</td><td></td></tr>'
-      +'<tr><td><strong>Judgment</strong></td><td style="text-align:center">'+jCell(dF)+'</td>'+(midOn?'<td style="text-align:center">'+jCell(dM)+'</td>':'')+'<td style="text-align:center">'+jCell(dT)+'</td><td></td></tr>'
+      +'<tr class="above-row"><td><strong>'+levelLbl('ab').en+'</strong></td><td style="text-align:center">'+valCell(dF)+'</td>'+(midOn?'<td style="text-align:center">'+valCell(dM)+'</td>':'')+'<td style="text-align:center">'+valCell(dT)+'</td><td style="text-align:center">'+deltaAb+'</td></tr>'
+      +'<tr class="inline-row"><td><strong>'+levelLbl('il').en+'</strong></td><td style="text-align:center">'+valOf(dF,'il')+'</td>'+(midOn?'<td style="text-align:center">'+valOf(dM,'il')+'</td>':'')+'<td style="text-align:center">'+valOf(dT,'il')+'</td><td style="text-align:center">'+deltaIl+'</td></tr>'
+      +'<tr class="below-row"><td><strong>'+levelLbl('bl').en+'</strong></td><td style="text-align:center">'+valOf(dF,'bl')+'</td>'+(midOn?'<td style="text-align:center">'+valOf(dM,'bl')+'</td>':'')+'<td style="text-align:center">'+valOf(dT,'bl')+'</td><td style="text-align:center">'+deltaBl+'</td></tr>'
+      +'<tr><td><strong>Judgment</strong></td><td style="text-align:center">'+jCell(dF)+'</td>'+(midOn?'<td style="text-align:center">'+jCell(dM)+'</td>':'')+'<td style="text-align:center">'+jCell(dT)+'</td><td style="text-align:center">'+deltaJ+'</td></tr>'
       +'</table></div>';
     if((dF&&!isNA(dF)&&!isNS(dF))||(dM&&!isNA(dM)&&!isNS(dM))||(dT&&!isNA(dT)&&!isNS(dT))){
       html2+='<div class="cwrap"><canvas id="ch-cmp-'+g.id+'" height="130"></canvas></div>';
@@ -2323,8 +2428,13 @@ function runStageReport(){
   function valCell(d){if(d==='no_students')return NS_SHORT;return d?'<strong>'+d.ab+'%</strong>':noDataOr(d);}
   function valOf(d,key){if(d==='no_students')return NS_SHORT;return d?d[key]+'%':noDataOr(d);}
   function jCellSt(d){if(d==='no_students')return nsB;if(!d)return'—';var j=getJ(d.ab,d.il,d.bl);return'<span class="jb '+jCls(j)+'">'+jLbl(j)+'</span>';}
-  var deltaTxt='-';
-  if(dF&&dT){var dv=dT.ab-dF.ab;deltaTxt='<span style="font-weight:800;color:'+(dv>0?'#2d7d46':dv<0?'#b71c1c':'#888')+'">'+(dv>0?'↑':dv<0?'↓':'→')+Math.abs(dv)+'%</span>';}
+  function getVSt(d,key){if(!d||d==='no_students')return null;return d[key];}
+  function getVJSt(d){if(!d||d==='no_students')return null;return getJ(d.ab,d.il,d.bl);}
+  var ptsAbSt=[getVSt(dF,'ab')];if(midOnSr)ptsAbSt.push(getVSt(dM,'ab'));ptsAbSt.push(getVSt(dT,'ab'));
+  var ptsIlSt=[getVSt(dF,'il')];if(midOnSr)ptsIlSt.push(getVSt(dM,'il'));ptsIlSt.push(getVSt(dT,'il'));
+  var ptsBlSt=[getVSt(dF,'bl')];if(midOnSr)ptsBlSt.push(getVSt(dM,'bl'));ptsBlSt.push(getVSt(dT,'bl'));
+  var ptsJSt=[getVJSt(dF)];if(midOnSr)ptsJSt.push(getVJSt(dM));ptsJSt.push(getVJSt(dT));
+  var deltaAbSt=deltaLastTwo(ptsAbSt), deltaIlSt=deltaLastTwo(ptsIlSt), deltaBlSt=deltaLastTwo(ptsBlSt), deltaJSt=deltaLastTwoJudgment(ptsJSt);
 
   var wayTh=midOnSr?'<th style="text-align:center;background:#6a1b9a">Waypoint<br><span style="font-size:9px;font-weight:400">'+(YEARS.find(function(y){return y.id===ym;})||{}).label+' '+tls[tm]+'</span></th>':'';
   var html='<div class="card" style="margin-bottom:16px;border-top:3px solid '+col+'">'
@@ -2339,10 +2449,10 @@ function runStageReport(){
     +wayTh
     +'<th style="text-align:center;background:#1b5e20">End<br><span style="font-size:9px;font-weight:400">'+(yt?yt.label:'')+' '+tls[te]+'</span></th>'
     +'<th style="text-align:center;background:#374151">Δ Change</th></tr>'
-    +'<tr class="above-row"><td><strong>'+levelLbl('ab').en+'</strong></td><td style="text-align:center">'+valCell(dF)+'</td>'+(midOnSr?'<td style="text-align:center">'+valCell(dM)+'</td>':'')+'<td style="text-align:center">'+valCell(dT)+'</td><td style="text-align:center">'+deltaTxt+'</td></tr>'
-    +'<tr class="inline-row"><td><strong>'+levelLbl('il').en+'</strong></td><td style="text-align:center">'+valOf(dF,'il')+'</td>'+(midOnSr?'<td style="text-align:center">'+valOf(dM,'il')+'</td>':'')+'<td style="text-align:center">'+valOf(dT,'il')+'</td><td></td></tr>'
-    +'<tr class="below-row"><td><strong>'+levelLbl('bl').en+'</strong></td><td style="text-align:center">'+valOf(dF,'bl')+'</td>'+(midOnSr?'<td style="text-align:center">'+valOf(dM,'bl')+'</td>':'')+'<td style="text-align:center">'+valOf(dT,'bl')+'</td><td></td></tr>'
-    +'<tr><td><strong>Judgment</strong></td><td style="text-align:center">'+jCellSt(dF)+'</td>'+(midOnSr?'<td style="text-align:center">'+jCellSt(dM)+'</td>':'')+'<td style="text-align:center">'+jCellSt(dT)+'</td><td></td></tr>'
+    +'<tr class="above-row"><td><strong>'+levelLbl('ab').en+'</strong></td><td style="text-align:center">'+valCell(dF)+'</td>'+(midOnSr?'<td style="text-align:center">'+valCell(dM)+'</td>':'')+'<td style="text-align:center">'+valCell(dT)+'</td><td style="text-align:center">'+deltaAbSt+'</td></tr>'
+    +'<tr class="inline-row"><td><strong>'+levelLbl('il').en+'</strong></td><td style="text-align:center">'+valOf(dF,'il')+'</td>'+(midOnSr?'<td style="text-align:center">'+valOf(dM,'il')+'</td>':'')+'<td style="text-align:center">'+valOf(dT,'il')+'</td><td style="text-align:center">'+deltaIlSt+'</td></tr>'
+    +'<tr class="below-row"><td><strong>'+levelLbl('bl').en+'</strong></td><td style="text-align:center">'+valOf(dF,'bl')+'</td>'+(midOnSr?'<td style="text-align:center">'+valOf(dM,'bl')+'</td>':'')+'<td style="text-align:center">'+valOf(dT,'bl')+'</td><td style="text-align:center">'+deltaBlSt+'</td></tr>'
+    +'<tr><td><strong>Judgment</strong></td><td style="text-align:center">'+jCellSt(dF)+'</td>'+(midOnSr?'<td style="text-align:center">'+jCellSt(dM)+'</td>':'')+'<td style="text-align:center">'+jCellSt(dT)+'</td><td style="text-align:center">'+deltaJSt+'</td></tr>'
     +'</table></div>';
   if((dF&&dF!=='no_students')||(dM&&dM!=='no_students')||(dT&&dT!=='no_students'))html+='<div class="cwrap"><canvas id="ch-stagereport" height="130"></canvas></div>';
   html+='</div>';
@@ -2468,8 +2578,13 @@ function runFullCohort(){
     var dE=getD(es,ey,et,gE.id);
     var dM=gM?getD(ms,my,mt,gM.id):null;
     var dF=gF?getD(fs,fy,ft,gF.id):null;
-    var delta='-';
-    if(dF&&dF!=='no_students'&&dE&&dE!=='no_students'){var dv=dE.ab-dF.ab;delta='<span style="font-weight:800;color:'+(dv>0?'#2d7d46':dv<0?'#b71c1c':'#888')+'">'+(dv>0?'↑':dv<0?'↓':'→')+Math.abs(dv)+'%</span>';}
+    function getVFC(d,key){if(!d||d==='no_students')return null;return d[key];}
+    function getVJFC(d){if(!d||d==='no_students')return null;return getJ(d.ab,d.il,d.bl);}
+    var ptsAbFC=[getVFC(dF,'ab'),getVFC(dM,'ab'),getVFC(dE,'ab')];
+    var ptsIlFC=[getVFC(dF,'il'),getVFC(dM,'il'),getVFC(dE,'il')];
+    var ptsBlFC=[getVFC(dF,'bl'),getVFC(dM,'bl'),getVFC(dE,'bl')];
+    var ptsJFC=[getVJFC(dF),getVJFC(dM),getVJFC(dE)];
+    var deltaAbFC=deltaLastTwo(ptsAbFC), deltaIlFC=deltaLastTwo(ptsIlFC), deltaBlFC=deltaLastTwo(ptsBlFC), deltaJFC=deltaLastTwoJudgment(ptsJFC);
     var titleEn='Full Cohort — '+repTypeEn+' / '+(ytO?yrCode(ytO):'')+' / '+tls[et]+' / Subject: '+(subE?subE.en:'')+' / '+gE.en+' / '+filtLbl();
     var titleAr='تقرير المجموعة الكاملة — '+(ytO?ytO.label:'')+' — '+(subE?subE.ar:'')+' — '+gE.ar;
     html+='<div class="card" style="margin-bottom:20px;border-top:3px solid '+col+'">'
@@ -2487,10 +2602,10 @@ function runFullCohort(){
       +'<th style="text-align:center;background:#6a1b9a">Waypoint'+(gM?' — '+gM.en:'')+'<br><span style="font-size:9px;font-weight:400">'+myO.label+' '+tls[mt]+'</span></th>'
       +'<th style="text-align:center;background:#1b5e20">End — '+gE.en+'<br><span style="font-size:9px;font-weight:400">'+(ytO?ytO.label:'')+' '+tls[et]+'</span></th>'
       +'<th style="text-align:center;background:#374151">Δ</th></tr>'
-      +'<tr class="above-row"><td><strong>'+levelLbl('ab').en+'</strong></td><td style="text-align:center">'+vC(dF)+'</td><td style="text-align:center">'+vC(dM)+'</td><td style="text-align:center">'+vC(dE)+'</td><td style="text-align:center">'+delta+'</td></tr>'
-      +'<tr class="inline-row"><td><strong>'+levelLbl('il').en+'</strong></td><td style="text-align:center">'+vO(dF,'il')+'</td><td style="text-align:center">'+vO(dM,'il')+'</td><td style="text-align:center">'+vO(dE,'il')+'</td><td></td></tr>'
-      +'<tr class="below-row"><td><strong>'+levelLbl('bl').en+'</strong></td><td style="text-align:center">'+vO(dF,'bl')+'</td><td style="text-align:center">'+vO(dM,'bl')+'</td><td style="text-align:center">'+vO(dE,'bl')+'</td><td></td></tr>'
-      +'<tr><td><strong>Judgment</strong></td><td style="text-align:center">'+jC(dF)+'</td><td style="text-align:center">'+jC(dM)+'</td><td style="text-align:center">'+jC(dE)+'</td><td></td></tr>'
+      +'<tr class="above-row"><td><strong>'+levelLbl('ab').en+'</strong></td><td style="text-align:center">'+vC(dF)+'</td><td style="text-align:center">'+vC(dM)+'</td><td style="text-align:center">'+vC(dE)+'</td><td style="text-align:center">'+deltaAbFC+'</td></tr>'
+      +'<tr class="inline-row"><td><strong>'+levelLbl('il').en+'</strong></td><td style="text-align:center">'+vO(dF,'il')+'</td><td style="text-align:center">'+vO(dM,'il')+'</td><td style="text-align:center">'+vO(dE,'il')+'</td><td style="text-align:center">'+deltaIlFC+'</td></tr>'
+      +'<tr class="below-row"><td><strong>'+levelLbl('bl').en+'</strong></td><td style="text-align:center">'+vO(dF,'bl')+'</td><td style="text-align:center">'+vO(dM,'bl')+'</td><td style="text-align:center">'+vO(dE,'bl')+'</td><td style="text-align:center">'+deltaBlFC+'</td></tr>'
+      +'<tr><td><strong>Judgment</strong></td><td style="text-align:center">'+jC(dF)+'</td><td style="text-align:center">'+jC(dM)+'</td><td style="text-align:center">'+jC(dE)+'</td><td style="text-align:center">'+deltaJFC+'</td></tr>'
       +'</table></div>'
       +((dF&&dF!=='no_students')||(dM&&dM!=='no_students')||(dE&&dE!=='no_students')?'<div class="cwrap"><canvas id="ch-fc-'+gE.id+'" height="110"></canvas></div>':'')
       +'</div>';
@@ -2774,6 +2889,68 @@ function pgSDTReportLinks(){
 }
 
 // ═══ SDT Data Entry (per domain, per grade) ═══
+// ─── مؤشر إكمال SDT: حالة كل صف عبر كل المجالات ───
+// شرطان: (1) Total>=1 لكل domain (2) كل عمود له طلاب فعليين يجب أن تكون بيانات حكمه مُدخلة — ولازم كل الـ domains لهذا الصف مكتملة
+function sdtDomainComplete(d){
+  if(!d||!d.saved)return false;
+  if(d.na===true)return true;
+  if(!d.st||!d.st.tot||d.st.tot<1)return false;
+  var st=d.st,j=d.j;
+  var cols=[
+    {cnt:st.tot,il:j.il,bl:j.bl},{cnt:st.m,il:j.ilm,bl:j.blm},{cnt:st.f,il:j.ilf,bl:j.blf},
+    {cnt:st.gt,il:j.ilgt,bl:j.blgt},{cnt:st.sod,il:j.ilsod,bl:j.blsod},{cnt:st.em,il:j.ilem,bl:j.blem}
+  ];
+  for(var i=0;i<cols.length;i++){
+    if((cols[i].cnt||0)>0&&(cols[i].il||0)===0&&(cols[i].bl||0)===0)return false;
+  }
+  return true;
+}
+function sdtGradeCompletionStatus(g,doms){
+  if(!doms.length)return'not_completed';
+  var allComplete=doms.every(function(dom){
+    var d=SDT_DB[sdtSel.s]&&SDT_DB[sdtSel.s][dom.id]&&SDT_DB[sdtSel.s][dom.id][sdtSel.y]&&SDT_DB[sdtSel.s][dom.id][sdtSel.y][sdtSel.t]&&SDT_DB[sdtSel.s][dom.id][sdtSel.y][sdtSel.t][g.id];
+    return sdtDomainComplete(d);
+  });
+  return allComplete?'completed':'not_completed';
+}
+function sdtCompletionIndicator(doms){
+  var statusMeta={
+    completed:{bg:'#dcfce7',border:'#16a34a',text:'#166534',en:'Completed',ar:'مكتمل'},
+    not_completed:{bg:'#f1f5f9',border:'#cbd5e1',text:'#64748b',en:'Not Completed',ar:'غير مكتمل'}
+  };
+  var counts={completed:0,not_completed:0};
+  var cells='';
+  GRADES.forEach(function(g){
+    var st=sdtGradeCompletionStatus(g,doms);
+    counts[st]++;
+    var m=statusMeta[st];
+    cells+='<div style="background:'+m.bg+';border:1.5px solid '+m.border+';border-radius:8px;padding:8px 6px;text-align:center;cursor:pointer" onclick="jumpToSDTGrade(\''+g.id+'\')">'
+      +'<div style="font-size:11px;font-weight:800;color:'+m.text+'">'+g.en+'</div>'
+      +'<div style="font-size:9px;color:'+m.text+';margin-top:3px;font-weight:700">'+m.en+'</div>'
+      +'<div class="ar" style="font-size:9px;color:'+m.text+';font-weight:700">'+m.ar+'</div>'
+      +'</div>';
+  });
+  return '<div class="card" style="margin-bottom:16px;padding:14px" id="sdtCompletionIndicatorCard">'
+    +'<div class="ctitle" style="color:#b45309;margin-bottom:10px"><i class="ti ti-checklist"></i> Completion Status <span class="ar" style="font-size:12px">مؤشر الإكمال</span>'
+    +'<span style="margin-left:auto;display:flex;gap:8px;font-size:11px;font-weight:700">'
+    +'<span style="color:#166534"><i class="ti ti-circle-filled" style="font-size:9px"></i> '+counts.completed+' Completed</span>'
+    +'<span style="color:#64748b"><i class="ti ti-circle-filled" style="font-size:9px"></i> '+counts.not_completed+' Not Completed</span>'
+    +'</span></div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px">'+cells+'</div>'
+    +'</div>';
+}
+function refreshSDTCompletionIndicator(doms){
+  var card=el('sdtCompletionIndicatorCard');
+  if(!card)return;
+  var tmp=document.createElement('div');
+  tmp.innerHTML=sdtCompletionIndicator(doms||(SDT_DOMAINS[sdtSel.s]||[]));
+  var newCard=tmp.firstChild;
+  card.parentNode.replaceChild(newCard,card);
+}
+function jumpToSDTGrade(gid){
+  var el2=el('sdt-grade-'+gid);
+  if(el2)el2.scrollIntoView({behavior:'smooth',block:'start'});
+}
 function pgSDTData(){
   var sub=SUBJECTS.find(function(x){return x.id===sdtSel.s;});
   var yr=YEARS.find(function(x){return x.id===sdtSel.y;});
@@ -2796,6 +2973,7 @@ function pgSDTData(){
     h+='<div class="card" style="text-align:center;padding:30px;color:var(--text2)"><i class="ti ti-alert-circle" style="font-size:36px"></i><p style="margin-top:8px;font-weight:600">No domains configured for this subject.<br>Go to Admin → Subject Domains to add them.</p></div>';
     return h;
   }
+  h+=sdtCompletionIndicator(doms);
   ['KG','PYP','MYP','DP'].forEach(function(grp){
     var list=GRADES.filter(function(g){return g.g===grp;});
     h+='<div style="padding:8px 13px;background:#b45309;border-radius:10px;font-size:13px;margin-bottom:8px;display:flex;align-items:center;gap:10px">'
@@ -2803,7 +2981,7 @@ function pgSDTData(){
       +'<span class="ar" style="color:rgba(255,255,255,.8);font-size:11px">'+grpAr[grp]+'</span></div>';
     list.forEach(function(g){
       // ─── رأس الصف ───
-      h+='<div style="background:linear-gradient(135deg,#fffbeb,#fef3c7);border:2px solid #b45309;border-radius:12px;padding:12px 16px;margin-bottom:10px;display:flex;align-items:center;gap:12px">'
+      h+='<div id="sdt-grade-'+g.id+'" style="background:linear-gradient(135deg,#fffbeb,#fef3c7);border:2px solid #b45309;border-radius:12px;padding:12px 16px;margin-bottom:10px;display:flex;align-items:center;gap:12px">'
         +'<i class="ti ti-user-circle" style="font-size:28px;color:#b45309"></i>'
         +'<div>'
         +'<div style="font-size:17px;font-weight:800;color:#1565b0">'+g.en+'</div>'
@@ -3029,6 +3207,7 @@ async function sdtSaveG(btn){
     var cv=el('sdtch-'+uid);
     if(cv)sdtDrawChart(cv,record,uid);
     notify('Saved: '+gen+' — '+did,'ok');
+    refreshSDTCompletionIndicator();
   }catch(e){notify('Error: '+(e&&e.message?e.message:e),'err');}
 }
 function sdtDrawChart(cv,d,uid){
@@ -3169,8 +3348,13 @@ function runSDTCompare(){
     function vC(d){if(d==='no_students')return NS_SHORT;return d?'<strong>'+d.ab+'%</strong>':noD;}
     function vO(d,k){if(d==='no_students')return NS_SHORT;return d?d[k]+'%':noD;}
     function jC(d){if(d==='no_students')return NS_BADGE;if(!d)return'—';var j=getJ(d.ab,d.il,d.bl);return'<span class="jb '+jCls(j)+'">'+jLbl(j)+'</span>';}
-    var delta='-';
-    if(dF&&dF!=='no_students'&&dT&&dT!=='no_students'){var dv=dT.ab-dF.ab;delta='<span style="font-weight:800;color:'+(dv>0?'#2d7d46':dv<0?'#b71c1c':'#888')+'">'+(dv>0?'↑':dv<0?'↓':'→')+Math.abs(dv)+'%</span>';}
+    function getVSDT(d,key){if(!d||d==='no_students')return null;return d[key];}
+    function getVJSDT(d){if(!d||d==='no_students')return null;return getJ(d.ab,d.il,d.bl);}
+    var ptsAbSDT=[getVSDT(dF,'ab')];if(midOn)ptsAbSDT.push(getVSDT(dM,'ab'));ptsAbSDT.push(getVSDT(dT,'ab'));
+    var ptsIlSDT=[getVSDT(dF,'il')];if(midOn)ptsIlSDT.push(getVSDT(dM,'il'));ptsIlSDT.push(getVSDT(dT,'il'));
+    var ptsBlSDT=[getVSDT(dF,'bl')];if(midOn)ptsBlSDT.push(getVSDT(dM,'bl'));ptsBlSDT.push(getVSDT(dT,'bl'));
+    var ptsJSDT=[getVJSDT(dF)];if(midOn)ptsJSDT.push(getVJSDT(dM));ptsJSDT.push(getVJSDT(dT));
+    var deltaAbSDT=deltaLastTwo(ptsAbSDT), deltaIlSDT=deltaLastTwo(ptsIlSDT), deltaBlSDT=deltaLastTwo(ptsBlSDT), deltaJSDT=deltaLastTwoJudgment(ptsJSDT);
     var midTh=midOn?'<th style="text-align:center;background:#6a1b9a">Waypoint<br><span style="font-size:9px;font-weight:400">'+ymO.label+' '+tls[tm]+' | '+grLbl(gm)+'</span></th>':'';
     var repTitle='SDT Over Time — '+sub.en+' | '+(ytO.label||'')+' '+tls2[tt]+' | '+grLbl(gt)+' | Domain '+(di+1)+': '+dom.en;
     var repTitleAr=sub.ar+' | '+dom.ar+' | '+(ytO.label||'')+' '+tls2[tt];
@@ -3184,10 +3368,10 @@ function runSDTCompare(){
       +midTh
       +'<th style="text-align:center;background:#1b5e20">End<br><span style="font-size:9px;font-weight:400">'+ytO.label+' '+tls[tt]+' | '+grLbl(gt)+'</span></th>'
       +'<th style="text-align:center;background:#374151">Δ</th></tr>'
-      +'<tr class="above-row"><td><strong>'+levelLbl('ab').en+'</strong></td><td style="text-align:center">'+vC(dF)+'</td>'+(midOn?'<td style="text-align:center">'+vC(dM)+'</td>':'')+'<td style="text-align:center">'+vC(dT)+'</td><td style="text-align:center">'+delta+'</td></tr>'
-      +'<tr class="inline-row"><td><strong>'+levelLbl('il').en+'</strong></td><td style="text-align:center">'+vO(dF,'il')+'</td>'+(midOn?'<td style="text-align:center">'+vO(dM,'il')+'</td>':'')+'<td style="text-align:center">'+vO(dT,'il')+'</td><td></td></tr>'
-      +'<tr class="below-row"><td><strong>'+levelLbl('bl').en+'</strong></td><td style="text-align:center">'+vO(dF,'bl')+'</td>'+(midOn?'<td style="text-align:center">'+vO(dM,'bl')+'</td>':'')+'<td style="text-align:center">'+vO(dT,'bl')+'</td><td></td></tr>'
-      +'<tr><td><strong>Judgment</strong></td><td style="text-align:center">'+jC(dF)+'</td>'+(midOn?'<td style="text-align:center">'+jC(dM)+'</td>':'')+'<td style="text-align:center">'+jC(dT)+'</td><td></td></tr>'
+      +'<tr class="above-row"><td><strong>'+levelLbl('ab').en+'</strong></td><td style="text-align:center">'+vC(dF)+'</td>'+(midOn?'<td style="text-align:center">'+vC(dM)+'</td>':'')+'<td style="text-align:center">'+vC(dT)+'</td><td style="text-align:center">'+deltaAbSDT+'</td></tr>'
+      +'<tr class="inline-row"><td><strong>'+levelLbl('il').en+'</strong></td><td style="text-align:center">'+vO(dF,'il')+'</td>'+(midOn?'<td style="text-align:center">'+vO(dM,'il')+'</td>':'')+'<td style="text-align:center">'+vO(dT,'il')+'</td><td style="text-align:center">'+deltaIlSDT+'</td></tr>'
+      +'<tr class="below-row"><td><strong>'+levelLbl('bl').en+'</strong></td><td style="text-align:center">'+vO(dF,'bl')+'</td>'+(midOn?'<td style="text-align:center">'+vO(dM,'bl')+'</td>':'')+'<td style="text-align:center">'+vO(dT,'bl')+'</td><td style="text-align:center">'+deltaBlSDT+'</td></tr>'
+      +'<tr><td><strong>Judgment</strong></td><td style="text-align:center">'+jC(dF)+'</td>'+(midOn?'<td style="text-align:center">'+jC(dM)+'</td>':'')+'<td style="text-align:center">'+jC(dT)+'</td><td style="text-align:center">'+deltaJSDT+'</td></tr>'
       +'</table></div>'
       +((dF&&dF!=='no_students')||(dM&&dM!=='no_students')||(dT&&dT!=='no_students')?'<div class="cwrap"><canvas id="sdtCmpCh-'+di+'" height="110"></canvas></div>':'')
       +reportActionBar()+'</div>';
@@ -3272,7 +3456,13 @@ function runSDTStage(){
     function vC(d){if(d==='no_students')return NS_SHORT;return d?'<strong>'+d.ab+'%</strong>':noD;}
     function vO(d,k){if(d==='no_students')return NS_SHORT;return d?d[k]+'%':noD;}
     function jC(d){if(d==='no_students')return NS_BADGE;if(!d)return'—';var j=getJ(d.ab,d.il,d.bl);return'<span class="jb '+jCls(j)+'">'+jLbl(j)+'</span>';}
-    var delta='-';if(dF&&dF!=='no_students'&&dE&&dE!=='no_students'){var dv=dE.ab-dF.ab;delta='<span style="font-weight:800;color:'+(dv>0?'#2d7d46':dv<0?'#b71c1c':'#888')+'">'+(dv>0?'↑':dv<0?'↓':'→')+Math.abs(dv)+'%</span>';}
+    function getVSTG(d,key){if(!d||d==='no_students')return null;return d[key];}
+    function getVJSTG(d){if(!d||d==='no_students')return null;return getJ(d.ab,d.il,d.bl);}
+    var ptsAbSTG=[getVSTG(dF,'ab'),getVSTG(dM,'ab'),getVSTG(dE,'ab')];
+    var ptsIlSTG=[getVSTG(dF,'il'),getVSTG(dM,'il'),getVSTG(dE,'il')];
+    var ptsBlSTG=[getVSTG(dF,'bl'),getVSTG(dM,'bl'),getVSTG(dE,'bl')];
+    var ptsJSTG=[getVJSTG(dF),getVJSTG(dM),getVJSTG(dE)];
+    var deltaAbSTG=deltaLastTwo(ptsAbSTG), deltaIlSTG=deltaLastTwo(ptsIlSTG), deltaBlSTG=deltaLastTwo(ptsBlSTG), deltaJSTG=deltaLastTwoJudgment(ptsJSTG);
     html+='<div class="card" style="border-top:4px solid '+SDT_COL+';margin-bottom:16px">'
       +'<div style="text-align:center;padding-bottom:10px;border-bottom:1px solid var(--border);margin-bottom:10px">'
       +'<div style="font-size:13px;font-weight:800;color:'+SDT_COL+'">SDT Stage Report — '+sub.en+' | '+STAGES[stageKey].label+' | Domain '+(di+1)+': '+dom.en+'</div>'
@@ -3283,10 +3473,10 @@ function runSDTStage(){
       +'<th style="text-align:center;background:#6a1b9a">Waypoint<br><span style="font-size:9px">'+ymO.label+' '+tls[tm]+'</span></th>'
       +'<th style="text-align:center;background:#1b5e20">End<br><span style="font-size:9px">'+yeO.label+' '+tls[te]+'</span></th>'
       +'<th style="text-align:center;background:#374151">Δ</th></tr>'
-      +'<tr class="above-row"><td><strong>'+levelLbl('ab').en+'</strong></td><td style="text-align:center">'+vC(dF)+'</td><td style="text-align:center">'+vC(dM)+'</td><td style="text-align:center">'+vC(dE)+'</td><td style="text-align:center">'+delta+'</td></tr>'
-      +'<tr class="inline-row"><td><strong>'+levelLbl('il').en+'</strong></td><td style="text-align:center">'+vO(dF,'il')+'</td><td style="text-align:center">'+vO(dM,'il')+'</td><td style="text-align:center">'+vO(dE,'il')+'</td><td></td></tr>'
-      +'<tr class="below-row"><td><strong>'+levelLbl('bl').en+'</strong></td><td style="text-align:center">'+vO(dF,'bl')+'</td><td style="text-align:center">'+vO(dM,'bl')+'</td><td style="text-align:center">'+vO(dE,'bl')+'</td><td></td></tr>'
-      +'<tr><td><strong>Judgment</strong></td><td style="text-align:center">'+jC(dF)+'</td><td style="text-align:center">'+jC(dM)+'</td><td style="text-align:center">'+jC(dE)+'</td><td></td></tr>'
+      +'<tr class="above-row"><td><strong>'+levelLbl('ab').en+'</strong></td><td style="text-align:center">'+vC(dF)+'</td><td style="text-align:center">'+vC(dM)+'</td><td style="text-align:center">'+vC(dE)+'</td><td style="text-align:center">'+deltaAbSTG+'</td></tr>'
+      +'<tr class="inline-row"><td><strong>'+levelLbl('il').en+'</strong></td><td style="text-align:center">'+vO(dF,'il')+'</td><td style="text-align:center">'+vO(dM,'il')+'</td><td style="text-align:center">'+vO(dE,'il')+'</td><td style="text-align:center">'+deltaIlSTG+'</td></tr>'
+      +'<tr class="below-row"><td><strong>'+levelLbl('bl').en+'</strong></td><td style="text-align:center">'+vO(dF,'bl')+'</td><td style="text-align:center">'+vO(dM,'bl')+'</td><td style="text-align:center">'+vO(dE,'bl')+'</td><td style="text-align:center">'+deltaBlSTG+'</td></tr>'
+      +'<tr><td><strong>Judgment</strong></td><td style="text-align:center">'+jC(dF)+'</td><td style="text-align:center">'+jC(dM)+'</td><td style="text-align:center">'+jC(dE)+'</td><td style="text-align:center">'+deltaJSTG+'</td></tr>'
       +'</table></div>'
       +((dF&&dF!=='no_students')||(dM&&dM!=='no_students')||(dE&&dE!=='no_students')?'<div class="cwrap"><canvas id="sdtStCh-'+di+'" height="110"></canvas></div>':'')
       +reportActionBar()+'</div>';
@@ -3387,7 +3577,13 @@ function runSDTCohort(){
       function vC(d){if(d==='no_students')return NS_SHORT;return d?'<strong>'+d.ab+'%</strong>':noD;}
       function vO(d,k){if(d==='no_students')return NS_SHORT;return d?d[k]+'%':noD;}
       function jC(d){if(d==='no_students')return NS_BADGE;if(!d)return'—';var j=getJ(d.ab,d.il,d.bl);return'<span class="jb '+jCls(j)+'">'+jLbl(j)+'</span>';}
-      var delta='-';if(dF&&dF!=='no_students'&&dE&&dE!=='no_students'){var dv=dE.ab-dF.ab;delta='<span style="font-weight:800;color:'+(dv>0?'#2d7d46':dv<0?'#b71c1c':'#888')+'">'+(dv>0?'↑':dv<0?'↓':'→')+Math.abs(dv)+'%</span>';}
+      function getVSDTFC(d,key){if(!d||d==='no_students')return null;return d[key];}
+      function getVJSDTFC(d){if(!d||d==='no_students')return null;return getJ(d.ab,d.il,d.bl);}
+      var ptsAbSDTFC=[getVSDTFC(dF,'ab'),getVSDTFC(dM,'ab'),getVSDTFC(dE,'ab')];
+      var ptsIlSDTFC=[getVSDTFC(dF,'il'),getVSDTFC(dM,'il'),getVSDTFC(dE,'il')];
+      var ptsBlSDTFC=[getVSDTFC(dF,'bl'),getVSDTFC(dM,'bl'),getVSDTFC(dE,'bl')];
+      var ptsJSDTFC=[getVJSDTFC(dF),getVJSDTFC(dM),getVJSDTFC(dE)];
+      var deltaAbSDTFC=deltaLastTwo(ptsAbSDTFC), deltaIlSDTFC=deltaLastTwo(ptsIlSDTFC), deltaBlSDTFC=deltaLastTwo(ptsBlSDTFC), deltaJSDTFC=deltaLastTwoJudgment(ptsJSDTFC);
       var cid='sdtfc-'+gE.id+'-'+di;
       html+='<div class="card" style="border-top:4px solid '+SDT_COL+';margin-bottom:16px">'
         +'<div style="text-align:center;padding-bottom:10px;border-bottom:1px solid var(--border);margin-bottom:10px">'
@@ -3403,10 +3599,10 @@ function runSDTCohort(){
         +'<th style="text-align:center;background:#6a1b9a">Waypoint'+(gM?' — '+gM.en:'')+'<br><span style="font-size:9px">'+myO.label+' '+tls[mt]+'</span></th>'
         +'<th style="text-align:center;background:#1b5e20">End — '+gE.en+'<br><span style="font-size:9px">'+eyO.label+' '+tls[et]+'</span></th>'
         +'<th style="text-align:center;background:#374151">Δ</th></tr>'
-        +'<tr class="above-row"><td><strong>'+levelLbl('ab').en+'</strong></td><td style="text-align:center">'+vC(dF)+'</td><td style="text-align:center">'+vC(dM)+'</td><td style="text-align:center">'+vC(dE)+'</td><td style="text-align:center">'+delta+'</td></tr>'
-        +'<tr class="inline-row"><td><strong>'+levelLbl('il').en+'</strong></td><td style="text-align:center">'+vO(dF,'il')+'</td><td style="text-align:center">'+vO(dM,'il')+'</td><td style="text-align:center">'+vO(dE,'il')+'</td><td></td></tr>'
-        +'<tr class="below-row"><td><strong>'+levelLbl('bl').en+'</strong></td><td style="text-align:center">'+vO(dF,'bl')+'</td><td style="text-align:center">'+vO(dM,'bl')+'</td><td style="text-align:center">'+vO(dE,'bl')+'</td><td></td></tr>'
-        +'<tr><td><strong>Judgment</strong></td><td style="text-align:center">'+jC(dF)+'</td><td style="text-align:center">'+jC(dM)+'</td><td style="text-align:center">'+jC(dE)+'</td><td></td></tr>'
+        +'<tr class="above-row"><td><strong>'+levelLbl('ab').en+'</strong></td><td style="text-align:center">'+vC(dF)+'</td><td style="text-align:center">'+vC(dM)+'</td><td style="text-align:center">'+vC(dE)+'</td><td style="text-align:center">'+deltaAbSDTFC+'</td></tr>'
+        +'<tr class="inline-row"><td><strong>'+levelLbl('il').en+'</strong></td><td style="text-align:center">'+vO(dF,'il')+'</td><td style="text-align:center">'+vO(dM,'il')+'</td><td style="text-align:center">'+vO(dE,'il')+'</td><td style="text-align:center">'+deltaIlSDTFC+'</td></tr>'
+        +'<tr class="below-row"><td><strong>'+levelLbl('bl').en+'</strong></td><td style="text-align:center">'+vO(dF,'bl')+'</td><td style="text-align:center">'+vO(dM,'bl')+'</td><td style="text-align:center">'+vO(dE,'bl')+'</td><td style="text-align:center">'+deltaBlSDTFC+'</td></tr>'
+        +'<tr><td><strong>Judgment</strong></td><td style="text-align:center">'+jC(dF)+'</td><td style="text-align:center">'+jC(dM)+'</td><td style="text-align:center">'+jC(dE)+'</td><td style="text-align:center">'+deltaJSDTFC+'</td></tr>'
         +'</table></div>'
         +((dF&&dF!=='no_students')||(dM&&dM!=='no_students')||(dE&&dE!=='no_students')?'<div class="cwrap"><canvas id="'+cid+'" height="100"></canvas></div>':'')
         +reportActionBar()+'</div>';

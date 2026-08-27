@@ -1525,7 +1525,7 @@ function deltaLastTwo(points){
   var valid=points.filter(function(p){return p!==null&&p!==undefined&&p!=='no_students'&&p!=='NA';});
   if(valid.length<2)return'-';
   var a=valid[valid.length-2], b=valid[valid.length-1];
-  var dv=b-a;
+  var dv=Math.round((b-a)*100)/100;
   if(dv===0)return'<span style="font-weight:800;color:#888">→ 0%</span>';
   var arrow=dv>0?'↑':'↓';
   var color=dv>0?'#2d7d46':'#b71c1c';
@@ -2052,9 +2052,13 @@ function pgCompare(){
   function pt(pre,titlePt,titlePtAr,ci){
     var cc=['#1565b0','#6a1b9a','#1b5e20'][ci];
     var ic=['ti-flag','ti-route','ti-flag-check'][ci];
+    var isStart=(pre==='cf');
+    var subSelect=isStart
+      ? '<select id="'+pre+'-s" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px" onchange="syncCmpSubject(this.value)">'+sOpts+'</select>'
+      : '<select id="'+pre+'-s" disabled style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:#f1f5f9">'+sOpts+'</select><div style="font-size:10px;color:var(--text2);margin-top:3px"><i class="ti ti-lock" style="font-size:10px"></i> Auto / تلقائي</div>';
     return '<div class="card" style="border-top:3px solid '+cc+'">'
       +'<div class="ctitle" style="color:'+cc+'"><i class="ti '+ic+'"></i> <span style="font-weight:800">'+titlePt+'</span> <span class="ar" style="font-size:11px">'+titlePtAr+'</span></div>'
-      +'<div class="field" style="margin-bottom:8px"><label>Subject <span class="ar" style="font-size:10px">المادة</span></label><select id="'+pre+'-s" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+sOpts+'</select></div>'
+      +'<div class="field" style="margin-bottom:8px"><label>Subject <span class="ar" style="font-size:10px">المادة</span></label>'+subSelect+'</div>'
       +'<div class="field" style="margin-bottom:8px"><label>Year <span class="ar" style="font-size:10px">السنة</span></label><select id="'+pre+'-y" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+yOpts+'</select></div>'
       +'<div class="field" style="margin-bottom:8px"><label>Term <span class="ar" style="font-size:10px">الفصل</span></label><select id="'+pre+'-t" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+tOpts+'</select></div>'
       +'<div class="field" style="margin:0"><label>Grade <span class="ar" style="font-size:10px">الصف</span></label><select id="'+pre+'-g" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+gOpts+'</select></div>'
@@ -2089,6 +2093,18 @@ function setFilt(f){
   document.querySelectorAll('.fbtn').forEach(function(b){b.classList.remove('on');});
   var fb=el('fb-'+f);if(fb)fb.classList.add('on');
 }
+// شريط Data Filter الموحّد — يُستخدم في Compare/Stage/Full Cohort لكل من Attainment/Progress/SDT
+function dataFilterOptionsHtml(){
+  return '<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:800;margin-bottom:7px">Data Filter <span class="ar">مرشح البيانات</span></div>'
+    +'<div style="display:flex;gap:7px;flex-wrap:wrap">'
+    +'<button id="fb-all" class="fbtn'+(activeFilt==='all'?' on':'')+'" onclick="setFilt(\'all\')"><i class="ti ti-users"></i> All <span class="ar" style="font-size:10px">الكل</span></button>'
+    +'<button id="fb-male" class="fbtn'+(activeFilt==='male'?' on':'')+'" onclick="setFilt(\'male\')"><i class="ti ti-gender-male"></i> Male <span class="ar" style="font-size:10px">بنين</span></button>'
+    +'<button id="fb-female" class="fbtn'+(activeFilt==='female'?' on':'')+'" onclick="setFilt(\'female\')"><i class="ti ti-gender-female"></i> Female <span class="ar" style="font-size:10px">بنات</span></button>'
+    +'<button id="fb-gt" class="fbtn'+(activeFilt==='gt'?' on':'')+'" onclick="setFilt(\'gt\')"><i class="ti ti-star"></i> G&amp;T <span class="ar" style="font-size:10px">موهوبون</span></button>'
+    +'<button id="fb-sod" class="fbtn'+(activeFilt==='sod'?' on':'')+'" onclick="setFilt(\'sod\')"><i class="ti ti-heart-handshake"></i> SoD <span class="ar" style="font-size:10px">ذوو الهمم</span></button>'
+    +'<button id="fb-emirati" class="fbtn'+(activeFilt==='emirati'?' on':'')+'" onclick="setFilt(\'emirati\')"><i class="ti ti-flag"></i> Emirati <span class="ar" style="font-size:10px">إماراتيون</span></button>'
+    +'</div></div>';
+}
 function togMid(){
   var on=el('midTog').checked;
   var grid=el('cmpGrid');
@@ -2101,9 +2117,10 @@ function togMid(){
     var gOpts='<option value="ALL">All Grades</option>';
     GRADES.forEach(function(g){gOpts+='<option value="'+g.id+'">'+g.en+'</option>';});
     var cc='#6a1b9a';
+    var startSubVal=(el('cf-s')||{value:''}).value;
     var midCard='<div id="midCard" class="card" style="border-top:3px solid '+cc+'">'
       +'<div class="ctitle" style="color:'+cc+'"><i class="ti ti-route"></i> <span style="font-weight:800">Waypoint</span> <span class="ar" style="font-size:11px">نقطة المرور</span></div>'
-      +'<div class="field" style="margin-bottom:8px"><label>Subject <span class="ar" style="font-size:10px">المادة</span></label><select id="cm-s" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+sOpts+'</select></div>'
+      +'<div class="field" style="margin-bottom:8px"><label>Subject <span class="ar" style="font-size:10px">المادة</span></label><select id="cm-s" disabled style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:#f1f5f9">'+sOpts+'</select><div style="font-size:10px;color:var(--text2);margin-top:3px"><i class="ti ti-lock" style="font-size:10px"></i> Auto / تلقائي</div></div>'
       +'<div class="field" style="margin-bottom:8px"><label>Year <span class="ar" style="font-size:10px">السنة</span></label><select id="cm-y" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+yOpts+'</select></div>'
       +'<div class="field" style="margin-bottom:8px"><label>Term <span class="ar" style="font-size:10px">الفصل</span></label><select id="cm-t" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+tOpts+'</select></div>'
       +'<div class="field" style="margin:0"><label>Grade <span class="ar" style="font-size:10px">الصف</span></label><select id="cm-g" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+gOpts+'</select></div>'
@@ -2115,10 +2132,17 @@ function togMid(){
     }else{
       grid.insertAdjacentHTML('beforeend',midCard);
     }
+    // مزامنة المادة من Start Point فور إظهار بطاقة Waypoint
+    var cmS=el('cm-s');if(cmS&&startSubVal)cmS.value=startSubVal;
   }else{
     grid.style.gridTemplateColumns='1fr 1fr';
     var mid=el('midCard');if(mid)mid.remove();
   }
+}
+// عند تغيير المادة في Start Point، توحّد نفس المادة في Waypoint وEnd Point تلقائياً
+function syncCmpSubject(v){
+  var ctS=el('ct-s');if(ctS)ctS.value=v;
+  var cmS=el('cm-s');if(cmS)cmS.value=v;
 }
 function filtLbl(){return{all:'All',male:'Male',female:'Female',gt:'G&T',sod:'SoD',emirati:'Emirati'}[activeFilt]||'All';}
 function filtLblAr(){return{all:'الكل',male:'بنين',female:'بنات',gt:'موهوبون',sod:'ذوو الهمم',emirati:'إماراتيون'}[activeFilt]||'الكل';}
@@ -2177,7 +2201,7 @@ function runCmp(){
     function deltaCell(dA,dB){
       if(isNA(dA)||isNA(dB)||isNS(dA)||isNS(dB))return isNS(dA)||isNS(dB)?nsBadge:naBadge;
       if(!dA||!dB)return'-';
-      var dv=dB.ab-dA.ab;
+      var dv=Math.round((dB.ab-dA.ab)*100)/100;
       return'<span style="font-weight:800;color:'+(dv>0?'#2d7d46':dv<0?'#b71c1c':'#888')+'">'+(dv>0?'↑':dv<0?'↓':'→')+Math.abs(dv)+'%</span>';
     }
     function jCell(d){if(isNA(d))return naBadge;if(isNS(d))return nsBadge;if(!d)return'—';var j=getJ(d.ab,d.il,d.bl);return'<span class="jb '+jCls(j)+'">'+jLbl(j)+'</span>';}
@@ -2283,17 +2307,19 @@ function pgStageReport(){
   }
   return mkbc([{t:isAtt?'Attainment':'Progress',fn:'_goSection(\''+section+'\')'},{t:title}])
     +'<div class="pgtitle" style="margin-bottom:14px"><span style="font-size:20px;font-weight:800;color:'+col+'">'+title+'</span><span class="ar" style="display:block;font-size:14px;font-weight:800;margin-top:2px">'+titleAr+'</span></div>'
-    +'<div class="card" style="margin-bottom:14px;background:#eff6ff;border:1.5px solid #bfdbfe">'
-    +'<div style="font-size:12px;line-height:1.6"><i class="ti ti-info-circle"></i> Choose a stage from <strong>Start Point</strong> — it will lock the same stage in Waypoint &amp; End Point.'
-    +'<div class="ar" style="margin-top:4px">اختر المرحلة من نقطة البدء — سيتم قفل نفس المرحلة في نقطة المرور والوصول.</div></div></div>'
+    +'<div class="card" style="margin-bottom:14px">'
+    +'<div class="ctitle" style="color:'+col+'"><i class="ti ti-filter"></i> <strong>Comparison Options</strong> <span class="ar" style="font-size:12px">خيارات المقارنة</span></div>'
+    +dataFilterOptionsHtml()
+    +'<div style="font-size:12px;line-height:1.6;background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:8px;padding:10px;margin-bottom:12px"><i class="ti ti-info-circle"></i> Choose a stage from <strong>Start Point</strong> — it will lock the same stage in Waypoint &amp; End Point.'
+    +'<div class="ar" style="margin-top:4px">اختر المرحلة من نقطة البدء — سيتم قفل نفس المرحلة في نقطة المرور والوصول.</div></div>'
     +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;background:var(--bg);padding:10px;border-radius:8px">'
     +'<label class="twrap"><input type="checkbox" id="srWaypointTog" onchange="togSrWaypoint()"><span class="tslider"></span></label>'
     +'<span style="font-weight:800">Enable Waypoint <span class="ar" style="font-size:12px">تفعيل نقطة المرور</span></span></div>'
     +'<div id="srGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">'
     +pt('f','Start Point','نقطة البدء',0,true)+pt('e','End Point','نقطة الوصول',2,false)+'</div>'
-    +'<div style="text-align:center;margin-bottom:18px">'
+    +'<div style="text-align:center">'
     +'<button class="btn '+(isAtt?'btn-att':'btn-prog')+'" onclick="runStageReport()" style="padding:12px 32px;font-size:15px">'
-    +'<i class="ti ti-search"></i> <strong>Run Stage Report</strong> <span class="ar" style="font-size:12px">تشغيل تقرير المراحل</span></button></div>'
+    +'<i class="ti ti-search"></i> <strong>Run Stage Report</strong> <span class="ar" style="font-size:12px">تشغيل تقرير المراحل</span></button></div></div>'
     +'<div id="srResult"></div>';
 }
 
@@ -2420,8 +2446,8 @@ function runStageReport(){
 
   var repTypeEn=isAtt?'Attainment Report Comparison':'Progress Report Comparison';
   var repTypeAr=isAtt?'تقرير مقارنات التحصيل الدراسي':'تقرير مقارنات التقدم الدراسي';
-  var titleEn=stg.label+' — '+repTypeEn+' / '+(yt?yrCode(yt):'')+'_ '+tls[te]+'_Subject: '+(sub?sub.en:'');
-  var titleAr2='تقرير مقارنات '+(isAtt?'التحصيل الدراسي':'التقدم الدراسي')+' – للعام الأكاديمي '+(yt?yt.label:'')+' – المرحلة '+stg.ar+' – '+tlsAr[te];
+  var titleEn=repTypeEn+' — '+(sub?sub.en:'')+' | '+(yt?yt.label:'')+' '+tls[te]+' | '+stg.label+' | '+filtLbl();
+  var titleAr2=repTypeAr+' — '+(sub?sub.ar:'')+' | '+(yt?yt.label:'')+' '+tlsAr[te]+' | '+stg.ar+' | '+filtLblAr();
 
   var nsB='<span style="background:#f1f5f9;color:#64748b;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:700">No Students / لا يوجد طلاب</span>';
   function noDataOr(d){return d?'':'<span style="color:#b71c1c;font-weight:700;font-size:11px">No Data Saved</span>';}
@@ -2494,25 +2520,27 @@ function pgFullCohort(){
     +'<div class="pghdr"><div class="pgtitle">'
     +'<span class="en" style="color:'+col+'">Full Cohort Report</span>'
     +'<span class="ar" style="font-size:14px;display:block">تقرير نفس المجموعة في السنوات المتتابعة</span></div></div>'
-    +'<div class="card" style="margin-bottom:14px;background:#eff6ff;border:1.5px solid #bfdbfe">'
-    +'<div style="font-size:12px;line-height:1.6"><i class="ti ti-info-circle"></i> Select one or more grades in <strong>End Point</strong>. Years for Start &amp; Waypoint are set automatically.'
+    +'<div class="card" style="margin-bottom:14px">'
+    +'<div class="ctitle" style="color:'+col+'"><i class="ti ti-filter"></i> <strong>Comparison Options</strong> <span class="ar" style="font-size:12px">خيارات المقارنة</span></div>'
+    +dataFilterOptionsHtml()
+    +'<div style="font-size:12px;line-height:1.6;background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:8px;padding:10px"><i class="ti ti-info-circle"></i> Select one or more grades in <strong>End Point</strong>. Years for Start &amp; Waypoint are set automatically.'
     +'<div class="ar" style="margin-top:4px">اختر صفًا واحدًا أو أكثر في نقطة الوصول. سيتم تحديد السنوات تلقائيًا لنقطة البدء والمرور.</div></div></div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px">'
     +'<div class="card" style="border-top:3px solid #1565b0">'
     +'<div class="ctitle" style="color:#1565b0"><i class="ti ti-flag"></i> <strong>Start Point</strong> <span class="ar" style="font-size:11px">نقطة البدء</span></div>'
-    +'<div class="field" style="margin-bottom:8px"><label>Subject <span class="ar" style="font-size:10px">المادة</span></label><select id="fc-f-s" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+sOpts+'</select></div>'
+    +'<div class="field" style="margin-bottom:8px"><label>Subject <span class="ar" style="font-size:10px">المادة</span></label><select id="fc-f-s" disabled style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:#f1f5f9">'+sOpts+'</select><div style="font-size:10px;color:var(--text2);margin-top:3px"><i class="ti ti-lock" style="font-size:10px"></i> Auto / تلقائي</div></div>'
     +'<div class="field" style="margin-bottom:8px"><label>Year <span class="ar" style="font-size:10px">السنة</span></label><select id="fc-f-y" disabled style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:#f1f5f9">'+yOpts+'</select><div style="font-size:10px;color:var(--text2);margin-top:3px"><i class="ti ti-lock" style="font-size:10px"></i> Auto / تلقائي</div></div>'
     +'<div class="field" style="margin:0"><label>Term <span class="ar" style="font-size:10px">الفصل</span></label><select id="fc-f-t" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+tOpts+'</select></div>'
     +'</div>'
     +'<div class="card" style="border-top:3px solid #6a1b9a">'
     +'<div class="ctitle" style="color:#6a1b9a"><i class="ti ti-route"></i> <strong>Waypoint</strong> <span class="ar" style="font-size:11px">نقطة المرور</span></div>'
-    +'<div class="field" style="margin-bottom:8px"><label>Subject <span class="ar" style="font-size:10px">المادة</span></label><select id="fc-m-s" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+sOpts+'</select></div>'
+    +'<div class="field" style="margin-bottom:8px"><label>Subject <span class="ar" style="font-size:10px">المادة</span></label><select id="fc-m-s" disabled style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:#f1f5f9">'+sOpts+'</select><div style="font-size:10px;color:var(--text2);margin-top:3px"><i class="ti ti-lock" style="font-size:10px"></i> Auto / تلقائي</div></div>'
     +'<div class="field" style="margin-bottom:8px"><label>Year <span class="ar" style="font-size:10px">السنة</span></label><select id="fc-m-y" disabled style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:#f1f5f9">'+yOpts+'</select><div style="font-size:10px;color:var(--text2);margin-top:3px"><i class="ti ti-lock" style="font-size:10px"></i> Auto / تلقائي</div></div>'
     +'<div class="field" style="margin:0"><label>Term <span class="ar" style="font-size:10px">الفصل</span></label><select id="fc-m-t" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+tOpts+'</select></div>'
     +'</div>'
     +'<div class="card" style="border-top:3px solid #1b5e20">'
     +'<div class="ctitle" style="color:#1b5e20"><i class="ti ti-flag-check"></i> <strong>End Point</strong> <span class="ar" style="font-size:11px">نقطة الوصول</span></div>'
-    +'<div class="field" style="margin-bottom:8px"><label>Subject <span class="ar" style="font-size:10px">المادة</span></label><select id="fc-e-s" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+sOpts+'</select></div>'
+    +'<div class="field" style="margin-bottom:8px"><label>Subject <span class="ar" style="font-size:10px">المادة</span></label><select id="fc-e-s" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px" onchange="syncFcSubject(this.value)">'+sOpts+'</select></div>'
     +'<div class="field" style="margin-bottom:8px"><label>Year <span class="ar" style="font-size:10px">السنة</span></label><select id="fc-e-y" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px" onchange="fcAutoFillYears()">'+yOpts+'</select></div>'
     +'<div class="field" style="margin-bottom:8px"><label>Term <span class="ar" style="font-size:10px">الفصل</span></label><select id="fc-e-t" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px">'+tOpts+'</select></div>'
     +'<div class="field" style="margin:0"><label>Grade(s) — <span style="font-size:10px;color:var(--text2)">Ctrl+Click for multi-select</span><br><span class="ar" style="font-size:10px">الصفوف — اضغط Ctrl للاختيار المتعدد</span></label>'
@@ -2531,6 +2559,11 @@ function fcAutoFillYears(){
   if(yeIdx>=2&&fy)fy.value=YEARS[yeIdx-2].id;
   if(yeIdx>=1&&my)my.value=YEARS[yeIdx-1].id;
 }
+// عند تغيير المادة في End Point، توحّد نفس المادة في Start Point وWaypoint تلقائياً
+function syncFcSubject(v){
+  var ff=el('fc-f-s');if(ff)ff.value=v;
+  var fm=el('fc-m-s');if(fm)fm.value=v;
+}
 
 function runFullCohort(){
   var isAtt=section==='att';var col=isAtt?'var(--att)':'var(--prog)';
@@ -2546,6 +2579,7 @@ function runFullCohort(){
   var myIdx=YEARS.findIndex(function(y){return y.id===my;});
   var diffF=yeIdx-fyIdx,diffM=yeIdx-myIdx;
   var tls={t1:'T1',t2:'T2',t3:'T3'};
+  var tls2={t1:'Term 1',t2:'Term 2',t3:'Term 3'};
   var subE=SUBJECTS.find(function(x){return x.id===es;})||ALL_SUBJECTS_40.find(function(x){return x.id===es;});
   var ytO=YEARS.find(function(y){return y.id===ey;});
   var repTypeEn=isAtt?'Attainment Report':'Progress Report';
@@ -2585,8 +2619,8 @@ function runFullCohort(){
     var ptsBlFC=[getVFC(dF,'bl'),getVFC(dM,'bl'),getVFC(dE,'bl')];
     var ptsJFC=[getVJFC(dF),getVJFC(dM),getVJFC(dE)];
     var deltaAbFC=deltaLastTwo(ptsAbFC), deltaIlFC=deltaLastTwo(ptsIlFC), deltaBlFC=deltaLastTwo(ptsBlFC), deltaJFC=deltaLastTwoJudgment(ptsJFC);
-    var titleEn='Full Cohort — '+repTypeEn+' / '+(ytO?yrCode(ytO):'')+' / '+tls[et]+' / Subject: '+(subE?subE.en:'')+' / '+gE.en+' / '+filtLbl();
-    var titleAr='تقرير المجموعة الكاملة — '+(ytO?ytO.label:'')+' — '+(subE?subE.ar:'')+' — '+gE.ar;
+    var titleEn='Full Cohort Report Comparison — '+(subE?subE.en:'')+' | '+(ytO?ytO.label:'')+' '+tls2[et]+' | '+gE.en+' | '+filtLbl();
+    var titleAr='تقرير مقارنات المجموعة الكاملة — '+(subE?subE.ar:'')+' | '+(ytO?ytO.label:'')+' '+tls2[et]+' | '+gE.ar+' | '+filtLblAr();
     html+='<div class="card" style="margin-bottom:20px;border-top:3px solid '+col+'">'
       +'<div style="text-align:center;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border)">'
       +'<div style="font-size:14px;font-weight:800;color:'+col+'">'+titleEn+'</div>'
@@ -3326,9 +3360,9 @@ function runSDTCompare(){
   var yfO=YEARS.find(function(y){return y.id===yf;})||YEARS[0]||{label:'',id:''};
   var ytO=YEARS.find(function(y){return y.id===yt;})||YEARS[0]||{label:'',id:''};
   var tls={t1:'T1',t2:'T2',t3:'T3'};
+  var tls2={t1:'Term 1',t2:'Term 2',t3:'Term 3'};
   var html='';
   var ymO=YEARS.find(function(y){return y.id===ym;})||yfO;
-  var tls2={t1:'Term 1',t2:'Term 2',t3:'Term 3'};
   function sdtAvg(y,t,g,domId){
     if(!y)return null;
     if(g==='ALL'){var tot={ab:0,il:0,bl:0},n=0;
@@ -3408,6 +3442,8 @@ function pgSDTStage(){
   return mkbc([{t:'SDT',fn:'sdtSel.s=null;sdtSel.y=null;sdtSel.t=null;cp=\'home\';renderSDT()'}])
     +'<div class="pgtitle" style="margin-bottom:14px"><span style="font-size:20px;font-weight:800;color:'+c+'">SDT Stage Report</span><span class="ar" style="display:block;font-size:14px;font-weight:800;margin-top:2px">تقرير مراحل مجالات المواد</span></div>'
     +'<div class="card" style="margin-bottom:14px">'
+    +'<div class="ctitle" style="color:'+c+'"><i class="ti ti-filter"></i> <strong>Comparison Options</strong> <span class="ar" style="font-size:12px">خيارات المقارنة</span></div>'
+    +dataFilterOptionsHtml()
     +'<div class="field"><label>Subject <span class="ar" style="font-size:10px">المادة</span></label>'
     +'<select id="sdtst-sub" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px" onchange="sdtStRefreshDoms(this.value)">'+subOpts+'</select></div>'
     +'<div class="field"><label>Domain Filter <span class="ar" style="font-size:10px">المجال</span></label>'
@@ -3511,6 +3547,8 @@ function pgSDTCohort(){
   return mkbc([{t:'SDT',fn:'sdtSel.s=null;sdtSel.y=null;sdtSel.t=null;cp=\'home\';renderSDT()'}])
     +'<div class="pgtitle" style="margin-bottom:14px"><span style="font-size:20px;font-weight:800;color:'+c+'">SDT Full Cohort</span><span class="ar" style="display:block;font-size:14px;font-weight:800;margin-top:2px">تقرير نفس المجموعة — مجالات المواد</span></div>'
     +'<div class="card" style="margin-bottom:14px">'
+    +'<div class="ctitle" style="color:'+c+'"><i class="ti ti-filter"></i> <strong>Comparison Options</strong> <span class="ar" style="font-size:12px">خيارات المقارنة</span></div>'
+    +dataFilterOptionsHtml()
     +'<div class="field"><label>Subject <span class="ar" style="font-size:10px">المادة</span></label>'
     +'<select id="sdtfc-sub" style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:8px" onchange="sdtFcRefreshDoms(this.value)">'+subOpts+'</select></div>'
     +'<div class="field"><label>Domain Filter <span class="ar" style="font-size:10px">المجال</span></label>'
